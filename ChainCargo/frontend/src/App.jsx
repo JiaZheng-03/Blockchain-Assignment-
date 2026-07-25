@@ -7,9 +7,10 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import CreateAgreement from './pages/CreateAgreement';
-import AgreementDetail from './pages/AgreenmentDetail';
+import AgreementDetail from './pages/AgreementDetail';
 import History from './pages/History';
 import Profile from './pages/Profile';
+import AccountPermissionDialog from './components/AccountPermissionDialog';
 import './App.css';
 
 function AppLayout() {
@@ -23,6 +24,7 @@ function AppLayout() {
         </main>
       </div>
       <Footer />
+      <AccountPermissionDialog />
     </div>
   );
 }

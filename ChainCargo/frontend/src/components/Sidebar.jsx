@@ -1,9 +1,11 @@
 import { NavLink } from 'react-router-dom';
+import { useProfile } from '../hooks/useProfile';
 
 function Sidebar() {
+  const { isShipper } = useProfile();
   const links = [
     { to: '/dashboard', label: 'Dashboard' },
-    { to: '/create-agreement', label: 'Create Agreement' },
+    ...(isShipper ? [{ to: '/create-agreement', label: 'Create Agreement' }] : []),
     { to: '/history', label: 'History' },
     { to: '/profile', label: 'Profile' },
   ];

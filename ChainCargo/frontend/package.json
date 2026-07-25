@@ -7,7 +7,12 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "chain": "hardhat node",
+    "compile": "hardhat compile",
+    "test:contracts": "hardhat test",
+    "test:ui": "node --test test-ui/agreementValidation.test.js",
+    "deploy:local": "hardhat run scripts/deploy.cjs --network localhost"
   },
   "dependencies": {
     "ethers": "^6.17.0",
@@ -16,6 +21,7 @@
     "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
     "@eslint/js": "^10.0.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
@@ -24,6 +30,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^17.7.0",
+    "hardhat": "^2.26.3",
     "vite": "^8.1.1"
   }
 }

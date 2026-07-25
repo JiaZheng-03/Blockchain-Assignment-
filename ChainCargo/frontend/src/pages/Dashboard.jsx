@@ -1,10 +1,25 @@
 import { useEffect, useState } from 'react';
 import { ethers } from 'ethers';
+import { Link } from 'react-router-dom';
 import AgreementCard from '../components/AgreementCard';
 import { useWallet } from '../context/WalletContext';
+import { useContract } from '../context/ContractContext';
+import { useProfile } from '../hooks/useProfile';
+import { useAgreements } from '../hooks/useAgreements';
 
 function Dashboard() {
-  const { account, isConnected, formatAddress, networkName } = useWallet();
+  const {
+    account,
+    authorizedAccountCount,
+    isConnected,
+    isConnecting,
+    formatAddress,
+    networkName,
+    switchWallet,
+  } = useWallet();
+  const { isConfigured } = useContract();
+  const { profile, isShipper, isCarrier } = useProfile();
+  const { agreements, loading: agreementsLoading, error: agreementsError } = useAgreements();
   const [balance, setBalance] = useState('0 ETH');
   const [balanceLoading, setBalanceLoading] = useState(false);
 
@@ -46,22 +61,43 @@ function Dashboard() {
     };
   }, [account, isConnected]);
 
-  const agreements = isConnected
-    ? [
-        { title: 'Ocean Freight #101', amount: '10 ETH', status: 'Active', link: '/agreement/101' },
-        { title: 'Cold Chain #204', amount: '6 ETH', status: 'Pending', link: '/agreement/204' },
-      ]
-    : [];
-
   const stats = [
-    { title: 'Connected Wallet', value: account ? formatAddress(account) : 'Not connected' },
+    { title: 'Account', value: profile?.name || (account ? formatAddress(account) : 'Not connected') },
     { title: 'Network', value: networkName },
-    { title: 'Balance', value: balanceLoading ? 'Loading...' : balance },
-    { title: 'Status', value: isConnected ? 'Ready' : 'Disconnected' },
+    { title: 'Wallet Balance', value: balanceLoading ? 'Loading...' : balance },
+    { title: 'On-chain Role', value: profile?.roleLabel || 'Unregistered' },
   ];
 
   return (
     <section>
+      {profile && (
+        <div className={`role-banner ${isShipper ? 'shipper-banner' : 'carrier-banner'}`}>
+          <div>
+            <span className="eyebrow">Current role: {profile.roleLabel}</span>
+            <h2>{isShipper ? 'Create and fund shipments' : 'Complete assigned shipments'}</h2>
+            <p>
+              {isShipper
+                ? 'Shippers create agreements, choose a registered carrier, and fund milestone escrow.'
+                : 'Carriers do not create or fund agreements. A shipper assigns your wallet; you then submit milestone evidence and receive approved payouts.'}
+            </p>
+          </div>
+          <div className="role-actions">
+            {isShipper && <Link className="btn btn-primary" to="/create-agreement">Create agreement</Link>}
+            <button className="btn btn-secondary" onClick={switchWallet} disabled={isConnecting}>
+              {isConnecting
+                ? 'Choose account in MetaMask…'
+                : authorizedAccountCount > 1
+                  ? `Switch to ${isCarrier ? 'Shipper' : 'Carrier'} wallet`
+                  : `Add your ${isCarrier ? 'Shipper' : 'Carrier'} wallet`}
+            </button>
+            {authorizedAccountCount < 2 && (
+              <small className="wallet-permission-hint">
+                In MetaMask, choose <strong>Edit accounts</strong>, select both imported accounts, then click <strong>Connect</strong>. Your current wallet stays registered.
+              </small>
+            )}
+          </div>
+        </div>
+      )}
       <div className="stat-grid">
         {stats.map((stat) => (
           <div className="stat-box" key={stat.title}>
@@ -72,16 +108,26 @@ function Dashboard() {
       </div>
 
       <div className="panel">
-        <h3>Recent Agreements</h3>
-        {isConnected ? (
+        <div className="section-heading">
+          <h3>Your Agreements</h3>
+          <span className="badge">{agreements.length} total</span>
+        </div>
+        {!isConfigured && <div className="notice error">No contract deployment is configured.</div>}
+        {agreementsError && <div className="notice error">{agreementsError}</div>}
+        {agreementsLoading ? <p>Loading on-chain agreements…</p> : isConnected && agreements.length ? (
           <div className="grid grid-2">
             {agreements.map((agreement) => (
-              <AgreementCard key={agreement.title} {...agreement} />
+              <AgreementCard
+                key={agreement.id}
+                title={agreement.title}
+                amount={`${agreement.totalEth} ETH`}
+                remaining={`${agreement.remainingEth} ETH`}
+                status={agreement.statusLabel}
+                link={`/agreement/${agreement.id}`}
+              />
             ))}
           </div>
-        ) : (
-          <p>Connect your wallet to see wallet-specific agreement data.</p>
-        )}
+        ) : <p>{isConnected ? 'No agreements are linked to this wallet yet.' : 'Connect your wallet to load agreements.'}</p>}
       </div>
     </section>
   );

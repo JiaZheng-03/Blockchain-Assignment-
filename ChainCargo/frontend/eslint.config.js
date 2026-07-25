@@ -17,5 +17,11 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Context modules intentionally export both providers and their matching hooks.
+      'react-refresh/only-export-components': 'off',
+      // These effects synchronize React with MetaMask and blockchain RPC state.
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
 ])
