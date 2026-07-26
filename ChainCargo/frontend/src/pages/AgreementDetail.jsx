@@ -106,6 +106,46 @@ function AgreementDetail() {
   const isCarrier = normalizedAccount === agreement.carrier.toLowerCase();
   const isArbitrator = normalizedAccount === arbitrator.toLowerCase();
   const currentMilestone = milestones[agreement.nextMilestone];
+  let nextStep = {
+    title: 'This agreement is closed',
+    detail: `Final status: ${agreement.statusLabel}. Review the immutable milestones and transaction history.`,
+  };
+  if (agreement.status === 0 && canRefund) {
+    nextStep = {
+      title: 'A deadline refund is available',
+      detail: 'The current required checkpoint or final deadline has passed. Claiming returns all remaining escrow to the Shipper.',
+    };
+  } else if (agreement.status === 0 && currentMilestone?.state === 0) {
+    nextStep = isCarrier
+      ? {
+          title: `Submit evidence for milestone ${currentMilestone.index + 1}`,
+          detail: 'Hash the delivery evidence below and confirm the transaction in MetaMask before its due date.',
+        }
+      : {
+          title: `Waiting for Carrier evidence on milestone ${currentMilestone.index + 1}`,
+          detail: 'Switch to the assigned Carrier wallet to submit proof. No ETH is released until the Shipper approves it.',
+        };
+  } else if (agreement.status === 0 && currentMilestone?.state === 1) {
+    nextStep = isShipper
+      ? {
+          title: `Verify milestone ${currentMilestone.index + 1} and release payment`,
+          detail: 'Inspect the evidence hash and URI, then confirm the exact milestone payout in MetaMask.',
+        }
+      : {
+          title: 'Evidence submitted — awaiting Shipper approval',
+          detail: 'The proof is immutable. Switch to the Shipper wallet to review it and release the payout.',
+        };
+  } else if (agreement.status === 3) {
+    nextStep = isArbitrator
+      ? {
+          title: 'Resolve the disputed remaining escrow',
+          detail: 'Choose the Shipper share below. The Carrier automatically receives the balance.',
+        }
+      : {
+          title: 'Dispute awaiting arbitrator resolution',
+          detail: 'Milestone actions are paused until the deployment arbitrator divides the remaining escrow.',
+        };
+  }
 
   return (
     <section className="detail-layout">
@@ -127,6 +167,11 @@ function AgreementDetail() {
           <div><small>Escrow remaining</small><strong>{agreement.remainingEth} ETH</strong></div>
           <div><small>Created</small><strong>{formatDate(agreement.createdAt)}</strong></div>
           <div><small>Final deadline</small><strong>{formatDate(agreement.deadline)}</strong></div>
+        </div>
+        <div className="notice next-step-notice">
+          <span className="eyebrow">Current workflow state</span>
+          <strong>{nextStep.title}</strong>
+          <p>{nextStep.detail}</p>
         </div>
         {error && <div className="notice error">{error}</div>}
 
@@ -224,7 +269,7 @@ function AgreementDetail() {
                   {isCurrent && isCarrier && milestone.state === 0 && (milestoneExpired || agreementExpired) && (
                     <div className="notice error">The proof deadline has passed. Evidence can no longer be submitted.</div>
                   )}
-                  {isCurrent && isShipper && milestone.state === 1 && !agreementExpired && (
+                  {isCurrent && isShipper && milestone.state === 1 && (
                     <button
                       className="btn btn-primary"
                       disabled={Boolean(busyAction)}
@@ -234,7 +279,9 @@ function AgreementDetail() {
                     </button>
                   )}
                   {isCurrent && isShipper && milestone.state === 1 && agreementExpired && (
-                    <div className="notice error">The final deadline has passed. Use the deadline refund or dispute action.</div>
+                    <div className="notice">
+                      This proof was submitted before its deadline. You may still approve it, or open a dispute if the evidence is not acceptable.
+                    </div>
                   )}
                 </div>
               </article>

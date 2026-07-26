@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { friendlyContractError, useContract } from '../context/ContractContext';
 import { decodeEscrowEvent } from '../utils/historyEvents';
+import { getSepoliaTransactionUrl } from '../utils/sepoliaExplorer';
 
 const eventDetails = {
   AgreementCreated: (args) => `${ethers.formatEther(args.amount)} ETH deposited into escrow`,
@@ -102,7 +103,15 @@ function History() {
                 </div>
                 <p>{event.detail}</p>
                 <Link to={`/agreement/${event.agreementId}`}>Agreement #{event.agreementId}</Link>
-                <code className="tx-hash" title={event.transactionHash}>{event.transactionHash}</code>
+                <a
+                  className="tx-hash"
+                  href={getSepoliaTransactionUrl(event.transactionHash)}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={event.transactionHash}
+                >
+                  {event.transactionHash}
+                </a>
               </div>
             </article>
           ))}

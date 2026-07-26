@@ -14,9 +14,9 @@ function Navbar() {
       </Link>
       <nav className="nav-links">
         <NavLink to="/">Home</NavLink>
-        <NavLink to="/dashboard">Dashboard</NavLink>
+        <NavLink to="/setup">Setup</NavLink>
+        {isRegistered && <NavLink to="/dashboard">Dashboard</NavLink>}
         {isShipper && <NavLink to="/create-agreement">Create Agreement</NavLink>}
-        {!account && <NavLink to="/login">Login</NavLink>}
         {account && !isRegistered && <NavLink to="/register">Register</NavLink>}
         {account ? (
           <span className={`badge role-badge role-${profile?.roleLabel?.toLowerCase() || 'unknown'}`}>

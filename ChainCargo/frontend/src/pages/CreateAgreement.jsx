@@ -15,8 +15,21 @@ const emptyMilestone = () => ({ name: '', details: '', percentage: '', dueAt: ''
 
 function CreateAgreement() {
   const navigate = useNavigate();
-  const { account, isConnected, isConnecting, connectWallet, switchWallet } = useWallet();
-  const { getReadContract, getWriteContract, isConfigured, waitForTransaction } = useContract();
+  const {
+    account,
+    isConnected,
+    isConnecting,
+    connectWallet,
+    formatAddress,
+    switchWallet,
+  } = useWallet();
+  const {
+    getReadContract,
+    getWriteContract,
+    isConfigured,
+    refreshKey,
+    waitForTransaction,
+  } = useContract();
   const { isShipper, isRegistered, loading: profileLoading, profile } = useProfile();
   const [form, setForm] = useState({
     title: '',
@@ -31,6 +44,9 @@ function CreateAgreement() {
   ]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [registeredCarriers, setRegisteredCarriers] = useState([]);
+  const [carriersLoading, setCarriersLoading] = useState(false);
+  const [carrierDirectoryError, setCarrierDirectoryError] = useState('');
   const [minimumDateTime, setMinimumDateTime] = useState('');
   const [step, setStep] = useState(1);
 
@@ -44,6 +60,46 @@ function CreateAgreement() {
     const timer = window.setInterval(updateMinimum, 30_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isConnected || !isConfigured || !isShipper) {
+      setRegisteredCarriers([]);
+      return undefined;
+    }
+
+    async function loadCarriers() {
+      try {
+        setCarriersLoading(true);
+        setCarrierDirectoryError('');
+        const contract = await getReadContract();
+        const addresses = await contract.getUsersByRole(2);
+        const entries = await Promise.all(
+          addresses.map(async (address) => {
+            const carrierProfile = await contract.getProfile(address);
+            return { address, name: carrierProfile.name };
+          }),
+        );
+        if (!cancelled) {
+          setRegisteredCarriers(entries);
+          setForm((current) => (
+            !current.carrier && entries.length === 1
+              ? { ...current, carrier: entries[0].address }
+              : current
+          ));
+        }
+      } catch (loadError) {
+        if (!cancelled) setCarrierDirectoryError(friendlyContractError(loadError));
+      } finally {
+        if (!cancelled) setCarriersLoading(false);
+      }
+    }
+
+    loadCarriers();
+    return () => {
+      cancelled = true;
+    };
+  }, [getReadContract, isConfigured, isConnected, isShipper, refreshKey]);
 
   const updateForm = (event) => {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
@@ -221,10 +277,34 @@ function CreateAgreement() {
             </div>
             <label>Agreement Name<input name="title" value={form.title} onChange={updateForm} required placeholder="Shipment #001" /></label>
             <label>
-              Carrier Address
-              <input name="carrier" value={form.carrier} onChange={updateForm} required placeholder="0x..." />
-              <small>The carrier must already be registered using a different wallet.</small>
+              Registered Carrier
+              <select
+                disabled={carriersLoading || !registeredCarriers.length}
+                name="carrier"
+                onChange={updateForm}
+                required
+                value={form.carrier}
+              >
+                <option value="">
+                  {carriersLoading ? 'Loading registered carriers…' : 'Select a Carrier wallet'}
+                </option>
+                {registeredCarriers.map((carrier) => (
+                  <option key={carrier.address} value={carrier.address}>
+                    {carrier.name} · {formatAddress(carrier.address)}
+                  </option>
+                ))}
+              </select>
+              <small>
+                Only wallets registered on-chain as Carrier are listed. Found {registeredCarriers.length}.
+              </small>
             </label>
+            {carrierDirectoryError && <div className="notice error">{carrierDirectoryError}</div>}
+            {!carriersLoading && !registeredCarriers.length && !carrierDirectoryError && (
+              <div className="notice">
+                No Carrier is registered yet. Open Setup, authorize a second MetaMask account,
+                and register it as Carrier before continuing.
+              </div>
+            )}
             <label>Total Escrow Amount (ETH)<input name="totalAmount" value={form.totalAmount} onChange={updateForm} required min="0.000001" step="any" type="number" placeholder="10" /></label>
             <label>
               Final Delivery Deadline

@@ -28,6 +28,7 @@ export const ESCROW_ABI = [
   'function agreementCount() view returns (uint256)',
   'function register(string name, uint8 role)',
   'function getProfile(address account) view returns (tuple(string name,uint8 role,uint64 registeredAt))',
+  'function getUsersByRole(uint8 role) view returns (address[])',
   'function createAgreement(string title,address carrier,uint64 deadline,string notes,string[] milestoneNames,string[] milestoneDetails,uint256[] payouts,uint64[] dueDates) payable returns (uint256)',
   'function submitMilestoneProof(uint256 agreementId,uint256 milestoneIndex,bytes32 proofHash,string proofURI)',
   'function approveMilestone(uint256 agreementId,uint256 milestoneIndex)',

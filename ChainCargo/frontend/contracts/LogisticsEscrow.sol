@@ -85,6 +85,7 @@ contract LogisticsEscrow {
     uint256 public agreementCount;
 
     mapping(address => UserProfile) private profiles;
+    mapping(Role => address[]) private roleAccounts;
     mapping(uint256 => Agreement) private agreements;
     mapping(uint256 => Milestone[]) private milestones;
     mapping(address => uint256[]) private userAgreementIds;
@@ -141,11 +142,17 @@ contract LogisticsEscrow {
         if (role != Role.Shipper && role != Role.Carrier) revert InvalidRole();
 
         profiles[msg.sender] = UserProfile(name, role, uint64(block.timestamp));
+        roleAccounts[role].push(msg.sender);
         emit UserRegistered(msg.sender, role, name);
     }
 
     function getProfile(address account) external view returns (UserProfile memory) {
         return profiles[account];
+    }
+
+    function getUsersByRole(Role role) external view returns (address[] memory) {
+        if (role != Role.Shipper && role != Role.Carrier) revert InvalidRole();
+        return roleAccounts[role];
     }
 
     function createAgreement(
@@ -258,7 +265,6 @@ contract LogisticsEscrow {
         if (agreement.shipper != msg.sender) revert Unauthorized();
         if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
         if (milestoneIndex != agreement.nextMilestone) revert InvalidMilestone();
-        if (block.timestamp > agreement.deadline) revert DeadlinePassed();
 
         Milestone storage milestone = milestones[agreementId][milestoneIndex];
         if (milestone.state != MilestoneState.Submitted) revert InvalidMilestone();
@@ -285,10 +291,9 @@ contract LogisticsEscrow {
         if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
 
         Milestone storage current = milestones[agreementId][agreement.nextMilestone];
-        bool missedOverallDeadline = block.timestamp > agreement.deadline;
         bool missedUnsubmittedMilestone =
             current.state == MilestoneState.Pending && block.timestamp > current.dueAt;
-        if (!missedOverallDeadline && !missedUnsubmittedMilestone) {
+        if (!missedUnsubmittedMilestone) {
             revert DeadlineNotPassed();
         }
 
@@ -354,9 +359,7 @@ contract LogisticsEscrow {
         Agreement storage agreement = agreements[agreementId];
         if (agreement.status != AgreementStatus.Active) return false;
         Milestone storage current = milestones[agreementId][agreement.nextMilestone];
-        return
-            block.timestamp > agreement.deadline ||
-            (current.state == MilestoneState.Pending && block.timestamp > current.dueAt);
+        return current.state == MilestoneState.Pending && block.timestamp > current.dueAt;
     }
 
     function _sendValue(address recipient, uint256 amount) private {

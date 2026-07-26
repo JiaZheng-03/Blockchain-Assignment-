@@ -105,6 +105,23 @@
   line-height: 1.6;
 }
 
+.flow-strip {
+  border-top: 1px solid #e2e8f0;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding-top: 1.25rem;
+}
+
+.flow-strip span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.flow-strip small {
+  color: #64748b;
+}
+
 .hero-actions {
   display: flex;
   gap: 0.75rem;
@@ -428,6 +445,132 @@ textarea:focus {
   margin: 3rem auto;
   max-width: 620px;
   text-align: center;
+}
+
+.setup-page {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.setup-intro h1 {
+  margin-bottom: 0.5rem;
+}
+
+.setup-intro > p {
+  color: #64748b;
+  margin-bottom: 0;
+  max-width: 760px;
+}
+
+.setup-checklist {
+  display: grid;
+  gap: 0;
+}
+
+.setup-step {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 1.25rem 0;
+}
+
+.setup-step + .setup-step {
+  border-top: 1px solid #e2e8f0;
+}
+
+.setup-step h3,
+.setup-step p {
+  margin-bottom: 0.5rem;
+}
+
+.setup-step-number,
+.flow-grid span {
+  align-items: center;
+  background: #e2e8f0;
+  border-radius: 50%;
+  color: #475569;
+  display: flex;
+  flex: 0 0 auto;
+  font-weight: 800;
+  height: 2rem;
+  justify-content: center;
+  width: 2rem;
+}
+
+.setup-step.complete .setup-step-number {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.command-line {
+  background: #0f172a;
+  border-radius: 0.5rem;
+  color: #e2e8f0;
+  display: block;
+  margin: 0.4rem 0;
+  max-width: 440px;
+  padding: 0.6rem 0.75rem;
+}
+
+.setup-step > div > small {
+  color: #64748b;
+  display: block;
+  margin: 0.65rem 0;
+}
+
+.setup-complete {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.setup-complete p {
+  margin: 0.2rem 0 0;
+}
+
+.flow-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.flow-grid > div {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.85rem;
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem;
+}
+
+.flow-grid p {
+  color: #64748b;
+  margin-bottom: 0;
+}
+
+.workflow-panel {
+  margin-bottom: 1.5rem;
+}
+
+.workflow-panel > p {
+  color: #64748b;
+  margin-bottom: 0;
+  max-width: 760px;
+}
+
+.empty-state {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+}
+
+.next-step-notice {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.next-step-notice p {
+  margin-bottom: 0;
 }
 
 .notice {
@@ -965,6 +1108,11 @@ button.role-card {
     grid-template-columns: 1fr;
   }
 
+  .flow-grid,
+  .flow-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .app-content {
     flex-direction: column;
   }
@@ -1014,7 +1162,9 @@ button.role-card {
   .role-grid,
   .next-actions,
   .wallet-access-panel,
-  .review-grid {
+  .review-grid,
+  .flow-grid,
+  .flow-strip {
     grid-template-columns: 1fr;
   }
 
@@ -1023,7 +1173,8 @@ button.role-card {
   }
 
   .wizard-actions,
-  .review-milestone {
+  .review-milestone,
+  .setup-complete {
     align-items: stretch;
     flex-direction: column;
   }

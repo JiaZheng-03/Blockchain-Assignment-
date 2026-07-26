@@ -15,7 +15,14 @@ function Register() {
     connectWallet,
     switchWallet,
   } = useWallet();
-  const { getWriteContract, isConfigured, waitForTransaction } = useContract();
+  const {
+    deploymentStatus,
+    getWriteContract,
+    isConfigured,
+    isCorrectNetwork,
+    switchToExpectedNetwork,
+    waitForTransaction,
+  } = useContract();
   const { isRegistered, profile, loading } = useProfile();
   const [name, setName] = useState('');
   const [role, setRole] = useState(requestedRole);
@@ -44,6 +51,14 @@ function Register() {
       await connectWallet();
       return;
     }
+    if (!isCorrectNetwork) {
+      setError('Switch MetaMask to Sepolia before registering.');
+      return;
+    }
+    if (deploymentStatus !== 'ready') {
+      setError('Start the local chain and deploy the escrow contract before registering.');
+      return;
+    }
     try {
       setBusy(true);
       setError('');
@@ -64,7 +79,7 @@ function Register() {
         <Link className="brand dark" to="/">ChainCargo</Link>
         <span className="eyebrow">Step 1 of your account setup</span>
         <h2>Register a wallet role</h2>
-        <p>Each MetaMask account has one permanent role in this local deployment.</p>
+        <p>Each MetaMask account has one permanent role in the Sepolia deployment.</p>
 
         <div className="wallet-preview">
           <small>Wallet being registered</small>
@@ -75,6 +90,19 @@ function Register() {
         {success && !isRegistered && <div className="notice success">{success}</div>}
         {error && <div className="notice error">{error}</div>}
         {!isConfigured && <div className="notice error">Deploy the contract before registering.</div>}
+        {isConnected && !isCorrectNetwork && (
+          <div className="notice error">
+            <p>MetaMask is on the wrong network.</p>
+            <button className="btn btn-primary" onClick={switchToExpectedNetwork} type="button">
+              Switch to Sepolia
+            </button>
+          </div>
+        )}
+        {isConnected && isCorrectNetwork && deploymentStatus !== 'ready' && (
+          <div className="notice error">
+            The local escrow contract is not available. Open the setup checklist and run the chain and deployment commands.
+          </div>
+        )}
 
         {isRegistered ? (
           <>
@@ -120,7 +148,17 @@ function Register() {
                   : 'Wrong account? Authorize another MetaMask account'}
               </button>
             )}
-            <button className="btn btn-primary" disabled={busy || !isConfigured || loading} type="submit">
+            <button
+              className="btn btn-primary"
+              disabled={
+                busy ||
+                !isConfigured ||
+                !isCorrectNetwork ||
+                deploymentStatus !== 'ready' ||
+                loading
+              }
+              type="submit"
+            >
               {!isConnected
                 ? 'Connect MetaMask first'
                 : busy
@@ -134,7 +172,7 @@ function Register() {
           <strong>To test the complete workflow</strong>
           <p>Register one MetaMask account as Shipper and a different account as Carrier. After the first registration, use the “Select another wallet” button above.</p>
         </div>
-        <Link className="back-link" to="/login">← Back to wallet login</Link>
+        <Link className="back-link" to="/setup">← Back to setup checklist</Link>
       </div>
     </div>
   );

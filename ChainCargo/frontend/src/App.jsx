@@ -1,10 +1,11 @@
-import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
+import { BrowserRouter, Navigate, Routes, Route, Outlet } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import Footer from './components/Footer';
+import WalletGate from './components/WalletGate';
 import Home from './pages/Home';
-import Login from './pages/Login';
 import Register from './pages/Register';
+import Setup from './pages/Setup';
 import Dashboard from './pages/Dashboard';
 import CreateAgreement from './pages/CreateAgreement';
 import AgreementDetail from './pages/AgreementDetail';
@@ -35,14 +36,18 @@ function App() {
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Home />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/create-agreement" element={<CreateAgreement />} />
-          <Route path="/agreement/:id" element={<AgreementDetail />} />
-          <Route path="/history" element={<History />} />
-          <Route path="/profile" element={<Profile />} />
+          <Route path="/setup" element={<Setup />} />
+          <Route element={<WalletGate />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/create-agreement" element={<CreateAgreement />} />
+            <Route path="/agreement/:id" element={<AgreementDetail />} />
+            <Route path="/history" element={<History />} />
+            <Route path="/profile" element={<Profile />} />
+          </Route>
         </Route>
-        <Route path="/login" element={<Login />} />
+        <Route path="/login" element={<Navigate replace to="/setup" />} />
         <Route path="/register" element={<Register />} />
+        <Route path="*" element={<Navigate replace to="/" />} />
       </Routes>
     </BrowserRouter>
   );

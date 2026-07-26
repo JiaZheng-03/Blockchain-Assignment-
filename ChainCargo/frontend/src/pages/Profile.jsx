@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
 import { ethers } from 'ethers';
 import { Link } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { useContract } from '../context/ContractContext';
 import { useProfile } from '../hooks/useProfile';
 import { useAgreements } from '../hooks/useAgreements';
+import { useWalletBalance } from '../hooks/useWalletBalance';
+import { getSepoliaAddressUrl } from '../utils/sepoliaExplorer';
 
 function Profile() {
   const {
@@ -22,18 +23,7 @@ function Profile() {
   const { address } = useContract();
   const { profile, loading } = useProfile();
   const { agreements } = useAgreements();
-  const [balance, setBalance] = useState('0 ETH');
-
-  useEffect(() => {
-    if (!account || !window.ethereum) return undefined;
-    let cancelled = false;
-    new ethers.BrowserProvider(window.ethereum).getBalance(account).then((value) => {
-      if (!cancelled) setBalance(`${Number(ethers.formatEther(value)).toFixed(4)} ETH`);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [account]);
+  const { displayBalance, error: balanceError } = useWalletBalance();
 
   const activeEscrow = agreements
     .filter((agreement) => agreement.status === 0 || agreement.status === 3)
@@ -46,7 +36,14 @@ function Profile() {
         <h2>{loading ? 'Loading…' : profile?.name || 'Unregistered wallet'}</h2>
         <div className="detail-grid single">
           <div><small>Role</small><strong>{profile?.roleLabel || 'None'}</strong></div>
-          <div><small>Wallet</small><strong title={account}>{isConnected ? formatAddress(account) : 'Not connected'}</strong></div>
+          <div>
+            <small>Wallet</small>
+            {isConnected ? (
+              <a href={getSepoliaAddressUrl(account)} target="_blank" rel="noreferrer" title={account}>
+                {formatAddress(account)}
+              </a>
+            ) : <strong>Not connected</strong>}
+          </div>
           <div><small>Registered</small><strong>{profile?.registeredAt ? new Date(profile.registeredAt * 1000).toLocaleString() : '—'}</strong></div>
           <div><small>Network</small><strong>{networkName}</strong></div>
         </div>
@@ -54,18 +51,26 @@ function Profile() {
       </div>
       <div className="panel">
         <span className="eyebrow">Portfolio</span>
-        <h2>{balance}</h2>
+        <h2>{displayBalance}</h2>
+        {balanceError && <div className="notice error">{balanceError}</div>}
         <div className="detail-grid single">
           <div><small>Participating agreements</small><strong>{agreements.length}</strong></div>
           <div><small>Active escrow</small><strong>{ethers.formatEther(activeEscrow)} ETH</strong></div>
-          <div><small>Escrow contract</small><strong title={address}>{address ? formatAddress(address) : 'Not deployed'}</strong></div>
+          <div>
+            <small>Escrow contract</small>
+            {address ? (
+              <a href={getSepoliaAddressUrl(address)} target="_blank" rel="noreferrer" title={address}>
+                {formatAddress(address)}
+              </a>
+            ) : <strong>Not deployed</strong>}
+          </div>
         </div>
       </div>
       <div className="panel full-span wallet-access-panel">
         <div>
           <span className="eyebrow">MetaMask permissions</span>
           <h2>Wallet Access</h2>
-          <p>Choose which authorized address to use, remove individual addresses from localhost, or disconnect the site completely.</p>
+          <p>Choose which authorized Sepolia address to use, manage site access, or disconnect ChainCargo from MetaMask.</p>
         </div>
         <div className="authorized-addresses">
           <small>Linked addresses ({authorizedAccounts.length})</small>

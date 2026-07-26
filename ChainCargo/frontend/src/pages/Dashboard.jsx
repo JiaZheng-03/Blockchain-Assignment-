@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
-import { ethers } from 'ethers';
 import { Link } from 'react-router-dom';
 import AgreementCard from '../components/AgreementCard';
 import { useWallet } from '../context/WalletContext';
 import { useContract } from '../context/ContractContext';
 import { useProfile } from '../hooks/useProfile';
 import { useAgreements } from '../hooks/useAgreements';
+import { useWalletBalance } from '../hooks/useWalletBalance';
 
 function Dashboard() {
   const {
@@ -20,53 +19,18 @@ function Dashboard() {
   const { isConfigured } = useContract();
   const { profile, isShipper, isCarrier } = useProfile();
   const { agreements, loading: agreementsLoading, error: agreementsError } = useAgreements();
-  const [balance, setBalance] = useState('0 ETH');
-  const [balanceLoading, setBalanceLoading] = useState(false);
-
-  useEffect(() => {
-    if (!isConnected || !account || typeof window === 'undefined' || !window.ethereum) {
-      setBalance('0 ETH');
-      setBalanceLoading(false);
-      return undefined;
-    }
-
-    let isCancelled = false;
-
-    const fetchBalance = async () => {
-      try {
-        setBalanceLoading(true);
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const balance = await provider.getBalance(account);
-        const formattedBalance = ethers.formatEther(balance);
-
-        if (!isCancelled) {
-          setBalance(`${Number(formattedBalance).toFixed(4)} ETH`);
-        }
-      } catch (error) {
-        console.error(error);
-        if (!isCancelled) {
-          setBalance('Unavailable');
-        }
-      } finally {
-        if (!isCancelled) {
-          setBalanceLoading(false);
-        }
-      }
-    };
-
-    fetchBalance();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [account, isConnected]);
+  const { displayBalance, error: balanceError } = useWalletBalance();
 
   const stats = [
     { title: 'Account', value: profile?.name || (account ? formatAddress(account) : 'Not connected') },
     { title: 'Network', value: networkName },
-    { title: 'Wallet Balance', value: balanceLoading ? 'Loading...' : balance },
+    { title: 'Sepolia Balance', value: displayBalance },
     { title: 'On-chain Role', value: profile?.roleLabel || 'Unregistered' },
   ];
+  const activeAgreements = agreements.filter((agreement) => agreement.status === 0).length;
+  const attentionAgreements = agreements.filter(
+    (agreement) => agreement.status === 0 || agreement.status === 3,
+  ).length;
 
   return (
     <section>
@@ -107,12 +71,42 @@ function Dashboard() {
         ))}
       </div>
 
+      {profile && (
+        <div className="panel workflow-panel">
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">Your next step</span>
+              <h3>
+                {isShipper
+                  ? activeAgreements
+                    ? 'Review active agreements or create the next shipment'
+                    : 'Create and fund your first logistics agreement'
+                  : attentionAgreements
+                    ? 'Open an assigned agreement and complete its current milestone'
+                    : 'Wait for a Shipper to assign this Carrier wallet'}
+              </h3>
+            </div>
+            <span className="badge">{attentionAgreements} need attention</span>
+          </div>
+          <p>
+            {isShipper
+              ? 'After funding, switch to the Carrier wallet to submit evidence. Switch back here to verify the evidence and release payment.'
+              : 'Submit evidence before the milestone due date. The Shipper reviews it and releases the on-chain payout.'}
+          </p>
+          <div className="wizard-actions">
+            <Link className="btn btn-secondary" to="/history">View transaction history</Link>
+            {isShipper && <Link className="btn btn-primary" to="/create-agreement">Create & fund agreement</Link>}
+          </div>
+        </div>
+      )}
+
       <div className="panel">
         <div className="section-heading">
           <h3>Your Agreements</h3>
           <span className="badge">{agreements.length} total</span>
         </div>
         {!isConfigured && <div className="notice error">No contract deployment is configured.</div>}
+        {balanceError && <div className="notice error">{balanceError}</div>}
         {agreementsError && <div className="notice error">{agreementsError}</div>}
         {agreementsLoading ? <p>Loading on-chain agreements…</p> : isConnected && agreements.length ? (
           <div className="grid grid-2">
@@ -124,10 +118,30 @@ function Dashboard() {
                 remaining={`${agreement.remainingEth} ETH`}
                 status={agreement.statusLabel}
                 link={`/agreement/${agreement.id}`}
+                actionLabel={
+                  agreement.status === 0
+                    ? isShipper
+                      ? 'Review / release payout'
+                      : 'Open current milestone'
+                    : agreement.status === 3
+                      ? 'Review dispute'
+                      : 'View final record'
+                }
               />
             ))}
           </div>
-        ) : <p>{isConnected ? 'No agreements are linked to this wallet yet.' : 'Connect your wallet to load agreements.'}</p>}
+        ) : (
+          <div className="empty-state">
+            <p>
+              {isConnected
+                ? isShipper
+                  ? 'No agreements yet. Create one to lock ETH into milestone escrow.'
+                  : 'No agreements are assigned to this Carrier wallet yet.'
+                : 'Connect your wallet to load agreements.'}
+            </p>
+            {isShipper && <Link className="btn btn-primary" to="/create-agreement">Create first agreement</Link>}
+          </div>
+        )}
       </div>
     </section>
   );

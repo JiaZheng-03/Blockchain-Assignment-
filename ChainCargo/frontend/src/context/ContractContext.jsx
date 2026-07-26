@@ -1,26 +1,88 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ethers } from 'ethers';
 import deployment from '../contracts/deployment.json';
 import { ESCROW_ABI } from '../contracts/abi';
+import {
+  SEPOLIA_NETWORK,
+  switchWalletNetwork,
+} from '../utils/walletNetwork';
 import { useWallet } from './WalletContext';
 export { friendlyContractError } from '../utils/contractErrors';
 
 const ContractContext = createContext(null);
+const DEFAULT_CHAIN_ID = SEPOLIA_NETWORK.chainId;
 
-function getContractAddress() {
-  return import.meta.env.VITE_ESCROW_CONTRACT_ADDRESS || deployment.address;
+function getContractAddress(expectedChainId) {
+  const override = import.meta.env.VITE_ESCROW_CONTRACT_ADDRESS;
+  const candidate = override ||
+    (Number(deployment.chainId) === expectedChainId ? deployment.address : '');
+  return candidate === ethers.ZeroAddress ? '' : candidate;
 }
 
 export function ContractProvider({ children }) {
-  const { account, isConnected } = useWallet();
+  const { account, chainId, isConnected } = useWallet();
   const [refreshKey, setRefreshKey] = useState(0);
-  const address = getContractAddress();
-  const expectedChainId = Number(import.meta.env.VITE_ESCROW_CHAIN_ID || deployment.chainId || 0);
+  const [deploymentStatus, setDeploymentStatus] = useState('checking');
+  const [deploymentError, setDeploymentError] = useState('');
+  const expectedChainId = Number(import.meta.env.VITE_ESCROW_CHAIN_ID || DEFAULT_CHAIN_ID);
+  const address = getContractAddress(expectedChainId);
   const isConfigured = ethers.isAddress(address || '') && address !== ethers.ZeroAddress;
+  const currentChainId = chainId ? Number.parseInt(chainId, 16) : 0;
+  const isCorrectNetwork = !expectedChainId || currentChainId === expectedChainId;
+
+  const checkDeployment = useCallback(async () => {
+    setDeploymentError('');
+    if (!isConfigured) {
+      setDeploymentStatus('not-configured');
+      return 'not-configured';
+    }
+    if (typeof window === 'undefined' || !window.ethereum) {
+      setDeploymentStatus('wallet-missing');
+      return 'wallet-missing';
+    }
+    if (!isCorrectNetwork) {
+      setDeploymentStatus('wrong-network');
+      return 'wrong-network';
+    }
+
+    try {
+      setDeploymentStatus('checking');
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const code = await provider.getCode(address);
+      const nextStatus = code === '0x' ? 'missing' : 'ready';
+      setDeploymentStatus(nextStatus);
+      return nextStatus;
+    } catch (error) {
+      setDeploymentStatus('unreachable');
+      setDeploymentError(
+        error?.shortMessage ||
+          error?.message ||
+          'The configured blockchain RPC could not be reached.',
+      );
+      return 'unreachable';
+    }
+  }, [address, isConfigured, isCorrectNetwork]);
+
+  useEffect(() => {
+    checkDeployment();
+  }, [checkDeployment, refreshKey]);
+
+  const switchToExpectedNetwork = useCallback(async () => {
+    if (!expectedChainId) throw new Error('No target chain is configured.');
+    const network = expectedChainId === SEPOLIA_NETWORK.chainId
+      ? SEPOLIA_NETWORK
+      : null;
+    await switchWalletNetwork(window.ethereum, expectedChainId, network);
+    setRefreshKey((current) => current + 1);
+  }, [expectedChainId]);
 
   const getReadContract = useCallback(async () => {
-    if (!isConfigured) throw new Error('Contract is not deployed. Run the local deployment first.');
-    if (!window.ethereum) throw new Error('MetaMask is required to access the blockchain.');
+    if (!isConfigured) {
+      throw new Error('The Sepolia contract is not deployed. Run npm run deploy:sepolia first.');
+    }
+    if (typeof window === 'undefined' || !window.ethereum) {
+      throw new Error('MetaMask is required to access the blockchain.');
+    }
     const provider = new ethers.BrowserProvider(window.ethereum);
     const network = await provider.getNetwork();
     if (expectedChainId && Number(network.chainId) !== expectedChainId) {
@@ -30,7 +92,7 @@ export function ContractProvider({ children }) {
     }
     if ((await provider.getCode(address)) === '0x') {
       throw new Error(
-        'No escrow contract exists at the configured address. Run the deployment command again.',
+        'No escrow contract exists at the configured Sepolia address. Deploy it again.',
       );
     }
     return new ethers.Contract(address, ESCROW_ABI, provider);
@@ -53,13 +115,31 @@ export function ContractProvider({ children }) {
     () => ({
       address,
       expectedChainId,
+      isCorrectNetwork,
       isConfigured,
+      deploymentError,
+      deploymentStatus,
       refreshKey,
+      checkDeployment,
       getReadContract,
       getWriteContract,
+      switchToExpectedNetwork,
       waitForTransaction,
     }),
-    [address, expectedChainId, getReadContract, getWriteContract, isConfigured, refreshKey, waitForTransaction],
+    [
+      address,
+      checkDeployment,
+      deploymentError,
+      deploymentStatus,
+      expectedChainId,
+      getReadContract,
+      getWriteContract,
+      isConfigured,
+      isCorrectNetwork,
+      refreshKey,
+      switchToExpectedNetwork,
+      waitForTransaction,
+    ],
   );
 
   return <ContractContext.Provider value={value}>{children}</ContractContext.Provider>;

@@ -34,12 +34,20 @@ describe("LogisticsEscrow", function () {
   }
 
   it("registers wallet roles and prevents duplicate registration", async function () {
-    const { escrow, shipper } = await deployFixture();
+    const { escrow, shipper, carrier } = await deployFixture();
     const profile = await escrow.getProfile(shipper.address);
     expect(profile.name).to.equal("Acme Imports");
     expect(profile.role).to.equal(1);
+    expect(await escrow.getUsersByRole(1)).to.deep.equal([shipper.address]);
+    expect(await escrow.getUsersByRole(2)).to.deep.equal([carrier.address]);
     await expect(escrow.connect(shipper).register("Again", 1))
       .to.be.revertedWithCustomError(escrow, "AlreadyRegistered");
+  });
+
+  it("rejects role-directory queries that are not participant roles", async function () {
+    const { escrow } = await deployFixture();
+    await expect(escrow.getUsersByRole(0))
+      .to.be.revertedWithCustomError(escrow, "InvalidRole");
   });
 
   it("requires milestone payouts to equal the funded escrow", async function () {
@@ -220,5 +228,22 @@ describe("LogisticsEscrow", function () {
       .to.be.revertedWithCustomError(escrow, "DeadlineNotPassed");
     await expect(escrow.connect(shipper).approveMilestone(0, 0))
       .to.emit(escrow, "MilestoneApproved");
+  });
+
+  it("protects timely submitted evidence after the overall deadline", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    const { now } = await createAgreement(escrow, shipper, carrier);
+    const proof = ethers.keccak256(ethers.toUtf8Bytes("final timely evidence"));
+
+    await escrow.connect(carrier).submitMilestoneProof(0, 0, proof, "ipfs://pickup");
+    await escrow.connect(shipper).approveMilestone(0, 0);
+    await escrow.connect(carrier).submitMilestoneProof(0, 1, proof, "ipfs://delivery");
+    await time.increaseTo(now + 7201);
+
+    expect(await escrow.canRefund(0)).to.equal(false);
+    await expect(escrow.claimRefundAfterDeadline(0))
+      .to.be.revertedWithCustomError(escrow, "DeadlineNotPassed");
+    await expect(escrow.connect(shipper).approveMilestone(0, 1))
+      .to.emit(escrow, "AgreementCompleted");
   });
 });

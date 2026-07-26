@@ -187,7 +187,7 @@ export function WalletProvider({ children }) {
       if (disconnectError?.code !== 4001) {
         setError(
           disconnectError?.code === -32601 || disconnectError?.code === 4200
-            ? 'This wallet cannot disconnect automatically. Use MetaMask → Connected sites to disconnect localhost.'
+            ? 'This wallet cannot disconnect automatically. Use MetaMask → Connected sites to disconnect ChainCargo.'
             : disconnectError.message || 'Failed to disconnect MetaMask.',
         );
       }

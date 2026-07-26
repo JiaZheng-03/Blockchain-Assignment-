@@ -8,6 +8,15 @@ import { ethers } from 'ethers';
 import { ESCROW_ABI } from '../src/contracts/abi.js';
 import { friendlyContractError } from '../src/utils/contractErrors.js';
 import { decodeEscrowEvent } from '../src/utils/historyEvents.js';
+import {
+  SEPOLIA_NETWORK,
+  switchWalletNetwork,
+  toHexChainId,
+} from '../src/utils/walletNetwork.js';
+import {
+  getSepoliaAddressUrl,
+  getSepoliaTransactionUrl,
+} from '../src/utils/sepoliaExplorer.js';
 
 const nowMs = new Date(2026, 6, 25, 9, 0).getTime();
 const shipper = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
@@ -133,4 +142,51 @@ test('decodes raw provider event logs before reading agreementId', () => {
   assert.equal(parsed.args.agreementId, 7n);
   assert.equal(parsed.args.shipper, shipper);
   assert.equal(decodeEscrowEvent(contractInterface, { data: '0x' }), null);
+});
+
+test('formats chain IDs and asks MetaMask to switch to Sepolia', async () => {
+  const calls = [];
+  const ethereum = {
+    request: async (request) => {
+      calls.push(request);
+    },
+  };
+
+  assert.equal(toHexChainId(11155111), '0xaa36a7');
+  await switchWalletNetwork(ethereum, 11155111, SEPOLIA_NETWORK);
+  assert.deepEqual(calls, [{
+    method: 'wallet_switchEthereumChain',
+    params: [{ chainId: '0xaa36a7' }],
+  }]);
+});
+
+test('adds Sepolia metadata when a wallet does not know the network', async () => {
+  const calls = [];
+  const ethereum = {
+    request: async (request) => {
+      calls.push(request);
+      if (request.method === 'wallet_switchEthereumChain') {
+        const error = new Error('Unknown chain');
+        error.code = 4902;
+        throw error;
+      }
+    },
+  };
+
+  await switchWalletNetwork(ethereum, 11155111, SEPOLIA_NETWORK);
+  assert.equal(calls[1].method, 'wallet_addEthereumChain');
+  assert.equal(calls[1].params[0].chainId, '0xaa36a7');
+  assert.deepEqual(calls[1].params[0].rpcUrls, ['https://rpc.sepolia.org']);
+  assert.deepEqual(calls[1].params[0].blockExplorerUrls, ['https://sepolia.etherscan.io']);
+});
+
+test('builds Sepolia explorer links for connected wallets and transactions', () => {
+  assert.equal(
+    getSepoliaAddressUrl(shipper),
+    `https://sepolia.etherscan.io/address/${shipper}`,
+  );
+  assert.equal(
+    getSepoliaTransactionUrl('0xabc123'),
+    'https://sepolia.etherscan.io/tx/0xabc123',
+  );
 });
