@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { ethers } from 'ethers';
 
 const WalletContext = createContext(null);
 
@@ -22,11 +23,33 @@ export function WalletProvider({ children }) {
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [balance, setBalance] = useState('0 ETH');
+  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [error, setError] = useState('');
 
   const formatAddress = (address) => {
     if (!address) return '';
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  const fetchBalance = async (currentAccount) => {
+    if (!currentAccount || typeof window === 'undefined' || !window.ethereum) {
+      setBalance('0 ETH');
+      return;
+    }
+
+    try {
+      setIsLoadingBalance(true);
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const balanceValue = await provider.getBalance(currentAccount);
+      const formattedBalance = ethers.formatEther(balanceValue);
+      setBalance(`${Number(formattedBalance).toFixed(4)} ETH`);
+    } catch (err) {
+      console.error('Failed to fetch balance:', err);
+      setBalance('Unavailable');
+    } finally {
+      setIsLoadingBalance(false);
+    }
   };
 
   const connectWallet = async () => {
@@ -67,13 +90,19 @@ export function WalletProvider({ children }) {
     const handleAccountsChanged = (accounts) => {
       if (accounts.length === 0) {
         setAccount(null);
+        setBalance('0 ETH');
       } else {
         setAccount(accounts[0]);
+        fetchBalance(accounts[0]);
       }
     };
 
     const handleChainChanged = (newChainId) => {
       setChainId(newChainId);
+      // Refresh balance when network changes
+      if (account) {
+        fetchBalance(account);
+      }
     };
 
     window.ethereum.on('accountsChanged', handleAccountsChanged);
@@ -84,6 +113,7 @@ export function WalletProvider({ children }) {
         const accounts = await window.ethereum.request({ method: 'eth_accounts' });
         if (accounts && accounts[0]) {
           setAccount(accounts[0]);
+          fetchBalance(accounts[0]);
         }
         const networkId = await window.ethereum.request({ method: 'eth_chainId' });
         setChainId(networkId);
@@ -98,7 +128,7 @@ export function WalletProvider({ children }) {
       window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
       window.ethereum.removeListener('chainChanged', handleChainChanged);
     };
-  }, []);
+  }, [account]);
 
   const value = useMemo(
     () => ({
@@ -106,12 +136,15 @@ export function WalletProvider({ children }) {
       chainId,
       isConnecting,
       error,
+      balance,
+      isLoadingBalance,
       formatAddress,
       connectWallet,
+      refreshBalance: () => fetchBalance(account),
       networkName: getNetworkName(chainId),
       isConnected: Boolean(account),
     }),
-    [account, chainId, isConnecting, error],
+    [account, chainId, isConnecting, error, balance, isLoadingBalance],
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

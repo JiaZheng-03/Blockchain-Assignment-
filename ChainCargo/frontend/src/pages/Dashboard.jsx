@@ -1,50 +1,8 @@
-import { useEffect, useState } from 'react';
-import { ethers } from 'ethers';
 import AgreementCard from '../components/AgreementCard';
 import { useWallet } from '../context/WalletContext';
 
 function Dashboard() {
-  const { account, isConnected, formatAddress, networkName } = useWallet();
-  const [balance, setBalance] = useState('0 ETH');
-  const [balanceLoading, setBalanceLoading] = useState(false);
-
-  useEffect(() => {
-    if (!isConnected || !account || typeof window === 'undefined' || !window.ethereum) {
-      setBalance('0 ETH');
-      setBalanceLoading(false);
-      return undefined;
-    }
-
-    let isCancelled = false;
-
-    const fetchBalance = async () => {
-      try {
-        setBalanceLoading(true);
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const balance = await provider.getBalance(account);
-        const formattedBalance = ethers.formatEther(balance);
-
-        if (!isCancelled) {
-          setBalance(`${Number(formattedBalance).toFixed(4)} ETH`);
-        }
-      } catch (error) {
-        console.error(error);
-        if (!isCancelled) {
-          setBalance('Unavailable');
-        }
-      } finally {
-        if (!isCancelled) {
-          setBalanceLoading(false);
-        }
-      }
-    };
-
-    fetchBalance();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [account, isConnected]);
+  const { account, isConnected, formatAddress, networkName, balance, isLoadingBalance } = useWallet();
 
   const agreements = isConnected
     ? [
@@ -56,7 +14,7 @@ function Dashboard() {
   const stats = [
     { title: 'Connected Wallet', value: account ? formatAddress(account) : 'Not connected' },
     { title: 'Network', value: networkName },
-    { title: 'Balance', value: balanceLoading ? 'Loading...' : balance },
+    { title: 'Balance', value: isLoadingBalance ? 'Loading...' : balance },
     { title: 'Status', value: isConnected ? 'Ready' : 'Disconnected' },
   ];
 
