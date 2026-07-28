@@ -3,8 +3,15 @@ import { ethers } from 'ethers';
 import { Link } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { friendlyContractError, useContract } from '../context/ContractContext';
-import { decodeEscrowEvent } from '../utils/historyEvents';
-import { getSepoliaTransactionUrl } from '../utils/sepoliaExplorer';
+import deployment from '../contracts/deployment.json';
+import { normalizeAgreement } from '../hooks/useAgreements';
+import {
+  decodeEscrowEvent,
+  findContractDeploymentBlock,
+  groupAgreementHistory,
+  loadContractLogsInChunks,
+  reconstructAgreementHistory,
+} from '../utils/historyEvents';
 
 const eventDetails = {
   AgreementCreated: (args) => `${ethers.formatEther(args.amount)} ETH deposited into escrow`,
@@ -18,14 +25,22 @@ const eventDetails = {
 
 function History() {
   const { account, isConnected } = useWallet();
-  const { getReadContract, isConfigured, refreshKey } = useContract();
+  const {
+    address,
+    getReadContract,
+    isConfigured,
+    refreshKey,
+  } = useContract();
+  const [agreements, setAgreements] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [historyNotice, setHistoryNotice] = useState('');
 
   useEffect(() => {
     let cancelled = false;
     if (!account || !isConnected || !isConfigured) {
+      setAgreements([]);
       setEvents([]);
       return undefined;
     }
@@ -34,45 +49,101 @@ function History() {
       try {
         setLoading(true);
         setError('');
+        setHistoryNotice('');
         const contract = await getReadContract();
         const ids = await contract.getUserAgreementIds(account);
-        const names = Object.keys(eventDetails);
-        const logs = (
-          await Promise.all(
-            ids.flatMap((id) =>
-              names.map((name) => contract.queryFilter(contract.filters[name](id), 0, 'latest')),
-            ),
-          )
-        ).flat();
+        if (!ids.length) {
+          if (!cancelled) {
+            setAgreements([]);
+            setEvents([]);
+          }
+          return;
+        }
 
-        const uniqueBlocks = [...new Set(logs.map((log) => log.blockNumber))];
-        const blockEntries = await Promise.all(
-          uniqueBlocks.map(async (blockNumber) => [
-            blockNumber,
-            await contract.runner.getBlock(blockNumber),
-          ]),
+        const rawAgreements = await Promise.all(
+          ids.map((id) => contract.getAgreement(id)),
         );
-        const blocks = new Map(blockEntries);
-        const normalized = logs
-          .map((log) => {
-            const parsed = decodeEscrowEvent(contract.interface, log);
-            if (!parsed || parsed.args?.agreementId === undefined || !eventDetails[parsed.name]) {
-              return null;
-            }
-            return {
-              key: `${log.transactionHash}-${log.index ?? log.logIndex ?? parsed.name}`,
-              agreementId: Number(parsed.args.agreementId),
-              name: parsed.name,
-              detail: eventDetails[parsed.name](parsed.args),
-              transactionHash: log.transactionHash,
-              timestamp: Number(blocks.get(log.blockNumber)?.timestamp || 0),
-            };
-          })
-          .filter(Boolean)
-          .sort((a, b) => b.timestamp - a.timestamp);
-        if (!cancelled) setEvents(normalized);
+        const agreementSummaries = ids.map(
+          (id, index) => normalizeAgreement(id, rawAgreements[index]),
+        );
+
+        let normalized;
+        try {
+          const provider = contract.runner;
+          const latestBlock = await provider.getBlockNumber();
+          const savedDeploymentBlock = Number(deployment.deploymentBlock || 0);
+          const fromBlock = savedDeploymentBlock > 0
+            ? savedDeploymentBlock
+            : await findContractDeploymentBlock(provider, address, latestBlock);
+          const eventTopics = Object.keys(eventDetails).map(
+            (name) => contract.interface.getEvent(name).topicHash,
+          );
+          const logs = await loadContractLogsInChunks({
+            provider,
+            address,
+            fromBlock,
+            toBlock: latestBlock,
+            topics: [eventTopics],
+          });
+          const agreementIds = new Set(ids.map((id) => id.toString()));
+
+          const uniqueBlocks = [...new Set(logs.map((log) => log.blockNumber))];
+          const blockEntries = await Promise.all(
+            uniqueBlocks.map(async (blockNumber) => [
+              blockNumber,
+              await provider.getBlock(blockNumber),
+            ]),
+          );
+          const blocks = new Map(blockEntries);
+          normalized = logs
+            .map((log) => {
+              const parsed = decodeEscrowEvent(contract.interface, log);
+              if (!parsed || parsed.args?.agreementId === undefined || !eventDetails[parsed.name]) {
+                return null;
+              }
+              if (!agreementIds.has(parsed.args.agreementId.toString())) return null;
+              return {
+                key: `${log.transactionHash}-${log.index ?? log.logIndex ?? parsed.name}`,
+                agreementId: Number(parsed.args.agreementId),
+                name: parsed.name,
+                detail: eventDetails[parsed.name](parsed.args),
+                transactionHash: log.transactionHash,
+                timestamp: Number(blocks.get(log.blockNumber)?.timestamp || 0),
+              };
+            })
+            .filter(Boolean);
+        } catch {
+          const stateEntries = await Promise.all(
+            ids.map(async (id, index) => {
+              const milestones = await contract.getMilestones(id);
+              return reconstructAgreementHistory(
+                id,
+                rawAgreements[index],
+                milestones,
+              );
+            }),
+          );
+          normalized = stateEntries.flat();
+          if (!cancelled) {
+            setHistoryNotice(
+              'Your Sepolia RPC does not provide event logs. Showing agreement summaries reconstructed from contract state.',
+            );
+          }
+        }
+
+        normalized.sort((a, b) => b.timestamp - a.timestamp);
+        if (!cancelled) {
+          setAgreements(agreementSummaries);
+          setEvents(normalized);
+        }
       } catch (historyError) {
-        if (!cancelled) setError(friendlyContractError(historyError));
+        if (!cancelled) {
+          setAgreements([]);
+          setEvents([]);
+          setError(
+            `Unable to read Sepolia history. ${friendlyContractError(historyError)}`,
+          );
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -82,41 +153,62 @@ function History() {
     return () => {
       cancelled = true;
     };
-  }, [account, getReadContract, isConfigured, isConnected, refreshKey]);
+  }, [account, address, getReadContract, isConfigured, isConnected, refreshKey]);
+
+  const agreementHistory = groupAgreementHistory(agreements, events);
 
   return (
     <div className="panel">
       <div className="section-heading">
-        <div><h2>On-chain Activity</h2><p>Chronological events for every agreement linked to this wallet.</p></div>
-        <span className="badge">{events.length} events</span>
+        <div>
+          <h2>Agreement History</h2>
+          <p>Each agreement is grouped into one record. Open it to review milestones and details.</p>
+        </div>
+        <span className="badge">{agreementHistory.length} agreements</span>
       </div>
       {error && <div className="notice error">{error}</div>}
-      {loading ? <p>Reading blockchain event logs…</p> : events.length ? (
-        <div className="activity-list">
-          {events.map((event) => (
-            <article className="activity-item" key={event.key}>
-              <div className="activity-icon" />
-              <div>
-                <div className="section-heading">
-                  <strong>{event.name.replace(/([A-Z])/g, ' $1').trim()}</strong>
-                  <time>{new Date(event.timestamp * 1000).toLocaleString()}</time>
+      {historyNotice && <div className="notice">{historyNotice}</div>}
+      {loading ? <p>Reading agreement history…</p> : agreementHistory.length ? (
+        <div className="history-agreement-list">
+          {agreementHistory.map((agreement) => (
+            <Link
+              className="history-agreement-card"
+              key={agreement.id}
+              to={`/agreement/${agreement.id}`}
+            >
+              <div className="history-agreement-heading">
+                <div>
+                  <small>Agreement #{agreement.id}</small>
+                  <h3>{agreement.title}</h3>
                 </div>
-                <p>{event.detail}</p>
-                <Link to={`/agreement/${event.agreementId}`}>Agreement #{event.agreementId}</Link>
-                <a
-                  className="tx-hash"
-                  href={getSepoliaTransactionUrl(event.transactionHash)}
-                  target="_blank"
-                  rel="noreferrer"
-                  title={event.transactionHash}
-                >
-                  {event.transactionHash}
-                </a>
+                <span className="badge">{agreement.statusLabel}</span>
               </div>
-            </article>
+              <div className="history-agreement-stats">
+                <span><small>Total escrow</small><strong>{agreement.totalEth} ETH</strong></span>
+                <span><small>Remaining</small><strong>{agreement.remainingEth} ETH</strong></span>
+                <span>
+                  <small>Last activity</small>
+                  <strong>
+                    {agreement.latestEvent
+                      ? agreement.latestEvent.name.replace(/([A-Z])/g, ' $1').trim()
+                      : 'Agreement created'}
+                  </strong>
+                </span>
+                <span>
+                  <small>Updated</small>
+                  <strong>{new Date(agreement.latestTimestamp * 1000).toLocaleString()}</strong>
+                </span>
+              </div>
+              <div className="history-agreement-footer">
+                <span>{agreement.eventCount} recorded event{agreement.eventCount === 1 ? '' : 's'}</span>
+                <strong>View agreement details →</strong>
+              </div>
+            </Link>
           ))}
         </div>
-      ) : <p>{isConnected ? 'No on-chain agreement activity found.' : 'Connect your wallet to view history.'}</p>}
+      ) : (
+        <p>{isConnected ? 'No agreements found for this wallet.' : 'Connect your wallet to view history.'}</p>
+      )}
     </div>
   );
 }

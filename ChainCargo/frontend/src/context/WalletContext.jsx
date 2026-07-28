@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 const WalletContext = createContext(null);
 const SELECTED_ACCOUNT_KEY = 'chaincargo.selectedAccount';
@@ -39,6 +47,7 @@ const getNetworkName = (chainId) => {
 };
 
 export function WalletProvider({ children }) {
+  const connectionConfirmedRef = useRef(false);
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
   const [authorizedAccounts, setAuthorizedAccounts] = useState([]);
@@ -70,9 +79,14 @@ export function WalletProvider({ children }) {
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       setAuthorizedAccounts(accounts || []);
       if (accounts && accounts[0]) {
+        connectionConfirmedRef.current = true;
         const selected = chooseRememberedAccount(accounts);
         rememberSelectedAccount(selected);
         setAccount(selected);
+      } else {
+        connectionConfirmedRef.current = false;
+        rememberSelectedAccount(null);
+        setAccount(null);
       }
 
       const networkId = await window.ethereum.request({ method: 'eth_chainId' });
@@ -133,10 +147,12 @@ export function WalletProvider({ children }) {
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       setAuthorizedAccounts(accounts || []);
       if (!accounts?.length) {
+        connectionConfirmedRef.current = false;
         rememberSelectedAccount(null);
         setAccount(null);
         return;
       }
+      connectionConfirmedRef.current = true;
       if (accountPermissionMode === 'add' && accounts.length < 2) {
         setError('No second account was authorized. Open Edit accounts in MetaMask and select both imported accounts.');
         return;
@@ -178,6 +194,7 @@ export function WalletProvider({ children }) {
         method: 'wallet_revokePermissions',
         params: [{ eth_accounts: {} }],
       });
+      connectionConfirmedRef.current = false;
       rememberSelectedAccount(null);
       setAuthorizedAccounts([]);
       setAccount(null);
@@ -197,6 +214,10 @@ export function WalletProvider({ children }) {
   }, []);
 
   const selectAuthorizedAccount = useCallback((selectedAccount) => {
+    if (!connectionConfirmedRef.current) {
+      setError('Connect MetaMask before selecting an account.');
+      return;
+    }
     const authorized = authorizedAccounts.find(
       (candidate) => candidate.toLowerCase() === selectedAccount.toLowerCase(),
     );
@@ -219,7 +240,8 @@ export function WalletProvider({ children }) {
     const handleAccountsChanged = (accounts) => {
       setError('');
       setAuthorizedAccounts(accounts);
-      if (accounts.length === 0) {
+      if (!connectionConfirmedRef.current || accounts.length === 0) {
+        if (accounts.length === 0) connectionConfirmedRef.current = false;
         rememberSelectedAccount(null);
         setAccount(null);
       } else {
@@ -244,11 +266,10 @@ export function WalletProvider({ children }) {
       try {
         const accounts = await window.ethereum.request({ method: 'eth_accounts' });
         setAuthorizedAccounts(accounts || []);
-        if (accounts && accounts[0]) {
-          const selected = chooseRememberedAccount(accounts);
-          rememberSelectedAccount(selected);
-          setAccount(selected);
-        }
+        // Keep the account disconnected until the user explicitly presses Connect MetaMask.
+        // eth_accounts only tells us which permissions existed in an earlier browser session.
+        connectionConfirmedRef.current = false;
+        setAccount(null);
         const networkId = await window.ethereum.request({ method: 'eth_chainId' });
         setChainId(networkId);
       } catch (err) {

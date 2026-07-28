@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { friendlyContractError, useContract } from '../context/ContractContext';
@@ -14,6 +14,7 @@ import {
 const emptyMilestone = () => ({ name: '', details: '', percentage: '', dueAt: '' });
 
 function CreateAgreement() {
+  const transactionInFlight = useRef(false);
   const navigate = useNavigate();
   const {
     account,
@@ -102,15 +103,66 @@ function CreateAgreement() {
   }, [getReadContract, isConfigured, isConnected, isShipper, refreshKey]);
 
   const updateForm = (event) => {
-    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+    const { name, value } = event.target;
+    setForm((current) => ({ ...current, [name]: value }));
+    if (name === 'deadline' && value) {
+      const deadlineMs = new Date(value).getTime();
+      const invalidCount = milestones.filter(
+        (milestone) => milestone.dueAt &&
+          new Date(milestone.dueAt).getTime() > deadlineMs,
+      ).length;
+      if (invalidCount) {
+        setMilestones((current) => current.map((milestone) => (
+          milestone.dueAt && new Date(milestone.dueAt).getTime() > deadlineMs
+            ? { ...milestone, dueAt: '' }
+            : milestone
+        )));
+        setError(
+          `${invalidCount} milestone date${invalidCount === 1 ? ' was' : 's were'} cleared because it exceeded the new final deadline.`,
+        );
+      }
+    }
   };
 
   const updateMilestone = (index, field, value) => {
+    if (field === 'dueAt' && value) {
+      const dueMs = new Date(value).getTime();
+      const previousDueAt = index > 0 ? milestones[index - 1].dueAt : '';
+      const previousDueMs = previousDueAt ? new Date(previousDueAt).getTime() : 0;
+      const deadlineMs = form.deadline ? new Date(form.deadline).getTime() : 0;
+
+      if (previousDueMs && dueMs <= previousDueMs) {
+        setError(`Milestone ${index + 1} must be later than milestone ${index}.`);
+        return;
+      }
+      if (deadlineMs && dueMs > deadlineMs) {
+        setError(`Milestone ${index + 1} cannot be later than the final deadline.`);
+        return;
+      }
+      setError('');
+    }
+
     setMilestones((current) =>
-      current.map((milestone, itemIndex) =>
-        itemIndex === index ? { ...milestone, [field]: value } : milestone,
-      ),
+      current.map((milestone, itemIndex) => {
+        if (itemIndex === index) return { ...milestone, [field]: value };
+        if (
+          field === 'dueAt' &&
+          value &&
+          itemIndex > index &&
+          milestone.dueAt &&
+          new Date(milestone.dueAt).getTime() <= new Date(value).getTime()
+        ) {
+          return { ...milestone, dueAt: '' };
+        }
+        return milestone;
+      }),
     );
+  };
+
+  const getMilestoneMinimum = (index) => {
+    if (index === 0 || !milestones[index - 1].dueAt) return minimumDateTime;
+    const previousDueMs = new Date(milestones[index - 1].dueAt).getTime();
+    return toDateTimeLocalValue(new Date(previousDueMs + 60_000));
   };
 
   const addMilestone = () => {
@@ -171,6 +223,8 @@ function CreateAgreement() {
       setError('Only a wallet registered as a shipper can create agreements.');
       return;
     }
+    if (transactionInFlight.current) return;
+    transactionInFlight.current = true;
 
     try {
       setBusy(true);
@@ -210,6 +264,7 @@ function CreateAgreement() {
     } catch (submitError) {
       setError(friendlyContractError(submitError));
     } finally {
+      transactionInFlight.current = false;
       setBusy(false);
     }
   };
@@ -338,7 +393,23 @@ function CreateAgreement() {
                 <label>Evidence required<input required value={milestone.details} onChange={(event) => updateMilestone(index, 'details', event.target.value)} /></label>
                 <div className="grid grid-2">
                   <label>Payout (%)<input required min="1" max="100" type="number" value={milestone.percentage} onChange={(event) => updateMilestone(index, 'percentage', event.target.value)} /></label>
-                  <label>Due date<input required min={minimumDateTime} max={form.deadline || undefined} type="datetime-local" value={milestone.dueAt} onChange={(event) => updateMilestone(index, 'dueAt', event.target.value)} /></label>
+                  <label>
+                    Due date
+                    <input
+                      required
+                      min={getMilestoneMinimum(index)}
+                      max={form.deadline || undefined}
+                      step="60"
+                      type="datetime-local"
+                      value={milestone.dueAt}
+                      onChange={(event) => updateMilestone(index, 'dueAt', event.target.value)}
+                    />
+                    <small>
+                      {index === 0
+                        ? 'Must be in the future and no later than the final deadline.'
+                        : `Must be later than milestone ${index} and no later than the final deadline.`}
+                    </small>
+                  </label>
                 </div>
                 {milestones.length > 1 && <button className="text-button danger" type="button" onClick={() => removeMilestone(index)}>Remove</button>}
               </div>
@@ -376,7 +447,9 @@ function CreateAgreement() {
                 </div>
               ))}
             </div>
-            <div className="notice">Milestone terms become immutable after the transaction is confirmed.</div>
+            <div className="notice">
+              Milestone terms become immutable after confirmation. Creating this agreement requires exactly one MetaMask transaction.
+            </div>
             <div className="wizard-actions">
               <button className="btn btn-secondary" type="button" onClick={() => moveToStep(2)}>Edit Milestones</button>
               <button className="btn btn-primary" disabled={busy || !isConfigured} type="submit">

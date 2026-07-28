@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { friendlyContractError, useContract } from '../context/ContractContext';
 import { useProfile } from '../hooks/useProfile';
 
 function Register() {
+  const transactionInFlight = useRef(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedRole = searchParams.get('role') === 'carrier' ? '2' : '1';
   const {
@@ -48,7 +49,7 @@ function Register() {
   const submit = async (event) => {
     event.preventDefault();
     if (!isConnected) {
-      await connectWallet();
+      setError('Connect MetaMask and confirm the wallet address before registering.');
       return;
     }
     if (!isCorrectNetwork) {
@@ -56,9 +57,11 @@ function Register() {
       return;
     }
     if (deploymentStatus !== 'ready') {
-      setError('Start the local chain and deploy the escrow contract before registering.');
+      setError('Deploy the Sepolia escrow contract before registering.');
       return;
     }
+    if (transactionInFlight.current) return;
+    transactionInFlight.current = true;
     try {
       setBusy(true);
       setError('');
@@ -69,6 +72,7 @@ function Register() {
     } catch (registerError) {
       setError(friendlyContractError(registerError));
     } finally {
+      transactionInFlight.current = false;
       setBusy(false);
     }
   };
@@ -90,6 +94,19 @@ function Register() {
         {success && !isRegistered && <div className="notice success">{success}</div>}
         {error && <div className="notice error">{error}</div>}
         {!isConfigured && <div className="notice error">Deploy the contract before registering.</div>}
+        {!isConnected && (
+          <div className="notice">
+            <p>Connect MetaMask first, then verify the exact wallet address shown above.</p>
+            <button
+              className="btn btn-primary"
+              disabled={isConnecting}
+              onClick={connectWallet}
+              type="button"
+            >
+              {isConnecting ? 'Waiting for MetaMask…' : 'Connect MetaMask'}
+            </button>
+          </div>
+        )}
         {isConnected && !isCorrectNetwork && (
           <div className="notice error">
             <p>MetaMask is on the wrong network.</p>
@@ -100,7 +117,7 @@ function Register() {
         )}
         {isConnected && isCorrectNetwork && deploymentStatus !== 'ready' && (
           <div className="notice error">
-            The local escrow contract is not available. Open the setup checklist and run the chain and deployment commands.
+            The Sepolia escrow contract is not available. Open the setup checklist and run the deployment command.
           </div>
         )}
 
@@ -152,6 +169,7 @@ function Register() {
               className="btn btn-primary"
               disabled={
                 busy ||
+                !isConnected ||
                 !isConfigured ||
                 !isCorrectNetwork ||
                 deploymentStatus !== 'ready' ||

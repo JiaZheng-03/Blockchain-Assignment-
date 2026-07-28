@@ -1,6 +1,7 @@
 {
   "address": "0xd1D02268d88fEddFF7e8f0deAb067BF1F2872024",
   "chainId": 11155111,
+  "deploymentBlock": 11353928,
   "abi": [
     {
       "inputs": [],

@@ -7,7 +7,13 @@ import {
 import { ethers } from 'ethers';
 import { ESCROW_ABI } from '../src/contracts/abi.js';
 import { friendlyContractError } from '../src/utils/contractErrors.js';
-import { decodeEscrowEvent } from '../src/utils/historyEvents.js';
+import {
+  decodeEscrowEvent,
+  findContractDeploymentBlock,
+  groupAgreementHistory,
+  loadContractLogsInChunks,
+  reconstructAgreementHistory,
+} from '../src/utils/historyEvents.js';
 import {
   SEPOLIA_NETWORK,
   switchWalletNetwork,
@@ -45,6 +51,18 @@ test('accepts a valid chronological agreement and calculates exact payouts', () 
   assert.equal(result.payouts[0], 300000000000000000n);
   assert.equal(result.payouts[1], 700000000000000000n);
   assert.equal(result.payouts.reduce((sum, value) => sum + value, 0n), result.totalWei);
+});
+
+test('accepts same-day milestones in time order and allows the last one at the final deadline', () => {
+  const draft = validDraft();
+  draft.milestones[0].dueAt = '2026-07-25T10:00';
+  draft.milestones[1].dueAt = '2026-07-25T12:00';
+
+  const result = validateAgreementDraft(draft);
+  assert.deepEqual(result.dueDates, [
+    Math.floor(new Date('2026-07-25T10:00').getTime() / 1000),
+    Math.floor(new Date('2026-07-25T12:00').getTime() / 1000),
+  ]);
 });
 
 test('rejects final deadlines and milestone dates in the past', () => {
@@ -142,6 +160,97 @@ test('decodes raw provider event logs before reading agreementId', () => {
   assert.equal(parsed.args.agreementId, 7n);
   assert.equal(parsed.args.shipper, shipper);
   assert.equal(decodeEscrowEvent(contractInterface, { data: '0x' }), null);
+});
+
+test('finds the contract deployment block and reads history in RPC-safe chunks', async () => {
+  const codeCalls = [];
+  const logCalls = [];
+  const provider = {
+    getCode: async (_address, blockNumber) => {
+      codeCalls.push(blockNumber);
+      return blockNumber >= 12_345 ? '0x6000' : '0x';
+    },
+    getLogs: async (filter) => {
+      logCalls.push(filter);
+      return [{ blockNumber: filter.fromBlock }];
+    },
+  };
+  const address = '0x0000000000000000000000000000000000001234';
+
+  const deploymentBlock = await findContractDeploymentBlock(provider, address, 20_000);
+  assert.equal(deploymentBlock, 12_345);
+  assert.ok(codeCalls.length < 20);
+
+  const logs = await loadContractLogsInChunks({
+    provider,
+    address,
+    fromBlock: deploymentBlock,
+    toBlock: 23_000,
+    topics: [['0xevent1', '0xevent2']],
+    chunkSize: 5_000,
+  });
+  assert.equal(logCalls.length, 3);
+  assert.deepEqual(
+    logCalls.map(({ fromBlock, toBlock }) => [fromBlock, toBlock]),
+    [[12_345, 17_344], [17_345, 22_344], [22_345, 23_000]],
+  );
+  assert.deepEqual(logCalls[0].topics, [['0xevent1', '0xevent2']]);
+  assert.equal(logs.length, 3);
+});
+
+test('reconstructs viewable history when an RPC rejects event-log queries', () => {
+  const entries = reconstructAgreementHistory(
+    7n,
+    {
+      totalAmount: ethers.parseEther('1'),
+      createdAt: 100n,
+      status: 1n,
+    },
+    [
+      {
+        payout: ethers.parseEther('0.3'),
+        submittedAt: 200n,
+        approvedAt: 300n,
+      },
+      {
+        payout: ethers.parseEther('0.7'),
+        submittedAt: 400n,
+        approvedAt: 500n,
+      },
+    ],
+  );
+
+  assert.deepEqual(
+    entries.map(({ name, timestamp }) => [name, timestamp]),
+    [
+      ['AgreementCreated', 100],
+      ['MilestoneProofSubmitted', 200],
+      ['MilestoneApproved', 300],
+      ['MilestoneProofSubmitted', 400],
+      ['MilestoneApproved', 500],
+      ['AgreementCompleted', 500],
+    ],
+  );
+  assert.ok(entries.every((entry) => entry.transactionHash === null));
+});
+
+test('groups history into one newest-first summary per agreement', () => {
+  const grouped = groupAgreementHistory(
+    [
+      { id: 0, title: 'Older', createdAt: 100 },
+      { id: 1, title: 'Newer activity', createdAt: 200 },
+    ],
+    [
+      { agreementId: 0, name: 'AgreementCreated', timestamp: 100 },
+      { agreementId: 0, name: 'MilestoneApproved', timestamp: 500 },
+      { agreementId: 1, name: 'AgreementCreated', timestamp: 200 },
+    ],
+  );
+
+  assert.deepEqual(grouped.map((agreement) => agreement.id), [0, 1]);
+  assert.equal(grouped[0].eventCount, 2);
+  assert.equal(grouped[0].latestEvent.name, 'MilestoneApproved');
+  assert.equal(grouped[1].eventCount, 1);
 });
 
 test('formats chain IDs and asks MetaMask to switch to Sepolia', async () => {

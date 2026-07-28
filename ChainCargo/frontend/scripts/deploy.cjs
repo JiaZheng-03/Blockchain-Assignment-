@@ -31,12 +31,14 @@ async function main() {
   const Escrow = await hre.ethers.getContractFactory("LogisticsEscrow");
   const escrow = await Escrow.deploy();
   await escrow.waitForDeployment();
+  const deploymentReceipt = await escrow.deploymentTransaction().wait();
 
   const address = await escrow.getAddress();
   const artifact = await hre.artifacts.readArtifact("LogisticsEscrow");
   const output = {
     address,
     chainId,
+    deploymentBlock: deploymentReceipt.blockNumber,
     abi: artifact.abi,
   };
 
