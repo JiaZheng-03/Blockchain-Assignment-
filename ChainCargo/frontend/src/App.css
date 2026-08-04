@@ -277,6 +277,11 @@ textarea:focus {
   color: #047857;
 }
 
+.role-arbitrator {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
 .role-banner {
   align-items: center;
   border: 1px solid;
@@ -305,6 +310,11 @@ textarea:focus {
 .carrier-banner {
   background: #ecfdf5;
   border-color: #a7f3d0;
+}
+
+.arbitrator-banner {
+  background: #f5f3ff;
+  border-color: #c4b5fd;
 }
 
 .role-actions {
@@ -564,6 +574,309 @@ textarea:focus {
   flex-direction: column;
 }
 
+.agreement-controls {
+  align-items: end;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.85rem;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(240px, 2fr) minmax(150px, 1fr) minmax(160px, 1fr) auto;
+  margin: 1rem 0;
+  padding: 1rem;
+}
+
+.dashboard-insights {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.insight-summary-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.insight-summary-card {
+  background: #fff;
+  border: 1px solid #dbe3ef;
+  border-radius: 0.85rem;
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.9rem 1rem;
+}
+
+.insight-summary-card strong {
+  color: #0f172a;
+  font-size: 1.3rem;
+  overflow-wrap: anywhere;
+}
+
+.insight-summary-card span {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.insight-chart-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+}
+
+.chart-panel {
+  min-width: 0;
+}
+
+.status-chart {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1.15rem;
+}
+
+.status-chart-row {
+  align-items: center;
+  display: grid;
+  font-size: 0.82rem;
+  gap: 0.65rem;
+  grid-template-columns: 78px minmax(80px, 1fr) 24px;
+}
+
+.status-chart-row > strong {
+  text-align: right;
+}
+
+.status-chart-track {
+  background: #e2e8f0;
+  border-radius: 999px;
+  height: 0.75rem;
+  overflow: hidden;
+}
+
+.status-chart-bar {
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  min-width: 0;
+  transition: width 0.3s ease;
+}
+
+.chart-status-0 {
+  background: #2563eb;
+}
+
+.chart-status-1 {
+  background: #16a34a;
+}
+
+.chart-status-2 {
+  background: #64748b;
+}
+
+.chart-status-3 {
+  background: #f59e0b;
+}
+
+.chart-status-4 {
+  background: #7c3aed;
+}
+
+.workflow-summary-grid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 1rem;
+}
+
+.workflow-summary-grid > div {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.7rem;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.75rem;
+}
+
+.workflow-summary-grid strong {
+  font-size: 1.2rem;
+}
+
+.workflow-summary-grid span {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.workflow-summary-grid .deadline-safe {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.workflow-summary-grid .deadline-warning {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+.workflow-summary-grid .deadline-critical,
+.workflow-summary-grid .deadline-overdue {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.arbitration-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.next-deadline-card {
+  align-items: center;
+  border: 1px solid;
+  border-radius: 0.75rem;
+  color: inherit;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-top: 0.75rem;
+  padding: 0.8rem;
+  text-decoration: none;
+}
+
+.next-deadline-card > span {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.next-deadline-card > span:last-child {
+  text-align: right;
+}
+
+.next-deadline-card small {
+  color: #64748b;
+}
+
+.next-deadline-card.deadline-safe {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.next-deadline-card.deadline-warning {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+.next-deadline-card.deadline-critical,
+.next-deadline-card.deadline-overdue {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.chart-empty-state {
+  background: #f8fafc;
+  border-radius: 0.75rem;
+  color: #64748b;
+  margin: 1rem 0 0;
+  padding: 0.85rem;
+}
+
+.agreement-controls label > span {
+  font-size: 0.82rem;
+}
+
+.agreement-control-summary {
+  align-items: flex-end;
+  color: #64748b;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  gap: 0.45rem;
+  padding-bottom: 0.75rem;
+  white-space: nowrap;
+}
+
+.agreement-control-summary .text-button {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.filtered-empty-state {
+  background: #f8fafc;
+  border-radius: 0.75rem;
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.notification-panel {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.notification-panel h3,
+.notification-panel p {
+  margin-bottom: 0.35rem;
+}
+
+.notification-panel p,
+.notification-panel small {
+  color: #64748b;
+}
+
+.notification-panel .btn,
+.notification-panel > .badge {
+  flex: 0 0 auto;
+}
+
+.agreement-card {
+  border-left-width: 5px;
+}
+
+.agreement-card.deadline-safe {
+  border-left-color: #22c55e;
+}
+
+.agreement-card.deadline-warning {
+  border-left-color: #f59e0b;
+}
+
+.agreement-card.deadline-critical,
+.agreement-card.deadline-overdue {
+  border-left-color: #dc2626;
+}
+
+.deadline-indicator {
+  border: 1px solid;
+  border-radius: 0.7rem;
+  display: grid;
+  gap: 0.2rem;
+  margin: 0.75rem 0;
+  padding: 0.7rem 0.8rem;
+}
+
+.deadline-indicator span {
+  font-size: 0.82rem;
+}
+
+.deadline-indicator.deadline-safe {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.deadline-indicator.deadline-warning {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.deadline-indicator.deadline-critical,
+.deadline-indicator.deadline-overdue {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
 .next-step-notice {
   display: grid;
   gap: 0.25rem;
@@ -626,6 +939,38 @@ textarea:focus {
   display: grid;
   gap: 0.75rem;
   padding: 1rem;
+}
+
+.carrier-reputation-preview {
+  align-items: center;
+  background: linear-gradient(135deg, #fffbeb, #fff7ed);
+  border: 1px solid #fcd34d;
+  border-radius: 0.85rem;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 0.9rem 1rem;
+}
+
+.carrier-reputation-preview > span:nth-child(2) {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.carrier-reputation-preview small {
+  color: #78716c;
+}
+
+.reputation-mark {
+  align-items: center;
+  background: #fef3c7;
+  border-radius: 50%;
+  color: #b45309;
+  display: flex;
+  font-size: 1.1rem;
+  height: 2.25rem;
+  justify-content: center;
+  width: 2.25rem;
 }
 
 .agreement-wizard {
@@ -1159,6 +1504,30 @@ button.role-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .insight-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .insight-chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .agreement-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .agreement-search,
+  .agreement-control-summary {
+    grid-column: 1 / -1;
+  }
+
+  .agreement-control-summary {
+    align-items: center;
+    flex-direction: row;
+    justify-content: space-between;
+    padding-bottom: 0;
+  }
+
   .navbar {
     align-items: flex-start;
     gap: 1rem;
@@ -1187,7 +1556,8 @@ button.role-card {
   .inline-form,
   .section-heading,
   .milestone-meta,
-  .role-banner {
+  .role-banner,
+  .notification-panel {
     align-items: stretch;
     flex-direction: column;
   }
@@ -1199,6 +1569,15 @@ button.role-card {
   .flow-grid,
   .flow-strip {
     grid-template-columns: 1fr;
+  }
+
+  .carrier-reputation-preview {
+    align-items: start;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .carrier-reputation-preview > small {
+    grid-column: 1 / -1;
   }
 
   .wizard-steps {
@@ -1224,5 +1603,29 @@ button.role-card {
 
   .history-agreement-stats {
     grid-template-columns: 1fr;
+  }
+
+  .insight-summary-grid,
+  .workflow-summary-grid,
+  .arbitration-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .next-deadline-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .next-deadline-card > span:last-child {
+    text-align: left;
+  }
+
+  .agreement-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .agreement-search,
+  .agreement-control-summary {
+    grid-column: auto;
   }
 }

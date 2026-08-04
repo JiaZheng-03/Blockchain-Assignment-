@@ -23,10 +23,227 @@ import {
   getSepoliaAddressUrl,
   getSepoliaTransactionUrl,
 } from '../src/utils/sepoliaExplorer.js';
+import { addressesEqual } from '../src/utils/address.js';
+import {
+  buildAgreementIds,
+  isArbitrationAgreement,
+} from '../src/utils/arbitration.js';
+import {
+  createUploadAuthorizationMessage,
+  evidenceHashMatches,
+  getEvidenceGatewayUrl,
+  hashEvidenceBytes,
+  ipfsUriToCid,
+  normalizeGatewayBaseUrl,
+} from '../src/utils/pinataEvidence.js';
+import { filterAndSortAgreements } from '../src/utils/agreementFilters.js';
+import {
+  formatDeadlineDuration,
+  getAgreementActionDeadline,
+  getDeadlineState,
+  isRefundAvailable,
+} from '../src/utils/deadlineAlerts.js';
+import { buildDashboardMetrics } from '../src/utils/dashboardMetrics.js';
+import {
+  getCarrierReputationTier,
+  readCarrierReputation,
+} from '../src/utils/carrierReputation.js';
 
 const nowMs = new Date(2026, 6, 25, 9, 0).getTime();
 const shipper = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
 const carrier = '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC';
+
+const filterAgreements = [
+  { id: 1, title: 'Port pickup', shipper, carrier, status: 0, deadline: 300, createdAt: 100 },
+  { id: 2, title: 'Warehouse delivery', shipper: carrier, carrier: shipper, status: 3, deadline: 500, createdAt: 200 },
+  { id: 3, title: 'Completed cargo', shipper, carrier, status: 1, deadline: 400, createdAt: 150 },
+];
+
+test('searches agreements by title, ID and participant address', () => {
+  assert.deepEqual(
+    filterAndSortAgreements(filterAgreements, { query: 'warehouse' }).map(({ id }) => id),
+    [2],
+  );
+  assert.deepEqual(
+    filterAndSortAgreements(filterAgreements, { query: '3' }).map(({ id }) => id),
+    [3],
+  );
+  assert.equal(filterAndSortAgreements(filterAgreements, { query: shipper.toLowerCase() }).length, 3);
+});
+
+test('filters on-chain statuses and overdue active agreements', () => {
+  assert.deepEqual(
+    filterAndSortAgreements(filterAgreements, { status: '3' }).map(({ id }) => id),
+    [2],
+  );
+  assert.deepEqual(
+    filterAndSortAgreements(filterAgreements, { status: 'overdue', nowSeconds: 350 }).map(({ id }) => id),
+    [1],
+  );
+});
+
+test('sorts agreements by creation time or nearest deadline', () => {
+  assert.deepEqual(filterAndSortAgreements(filterAgreements).map(({ id }) => id), [2, 3, 1]);
+  assert.deepEqual(
+    filterAndSortAgreements(filterAgreements, { sort: 'deadline' }).map(({ id }) => id),
+    [1, 3, 2],
+  );
+  assert.deepEqual(
+    filterAndSortAgreements(filterAgreements, { sort: 'oldest' }).map(({ id }) => id),
+    [1, 3, 2],
+  );
+});
+
+test('formats live deadline countdowns and assigns warning colors', () => {
+  assert.equal(formatDeadlineDuration(90_061), '1d 1h 1m');
+  assert.equal(getDeadlineState(200_000, 100_000).level, 'safe');
+  assert.equal(getDeadlineState(110_000, 100_000).level, 'warning');
+  assert.equal(getDeadlineState(103_600, 100_000).level, 'critical');
+  assert.deepEqual(
+    getDeadlineState(99_000, 100_000),
+    { level: 'overdue', countdown: 'Overdue by 16m 40s', secondsRemaining: -1_000 },
+  );
+});
+
+test('uses the current pending milestone for urgency and refund availability', () => {
+  const agreement = {
+    status: 0,
+    deadline: 500,
+    currentMilestoneDueAt: 300,
+    currentMilestoneState: 0,
+  };
+  assert.equal(getAgreementActionDeadline(agreement), 300);
+  assert.equal(isRefundAvailable(agreement, 299), false);
+  assert.equal(isRefundAvailable(agreement, 301), true);
+
+  const submitted = { ...agreement, currentMilestoneState: 1 };
+  assert.equal(getAgreementActionDeadline(submitted), 500);
+  assert.equal(isRefundAvailable(submitted, 600), false);
+});
+
+test('sorts active pending milestones before closed agreements when urgency is selected', () => {
+  const agreements = [
+    { ...filterAgreements[0], currentMilestoneDueAt: 250, currentMilestoneState: 0 },
+    filterAgreements[1],
+    filterAgreements[2],
+  ];
+  assert.deepEqual(
+    filterAndSortAgreements(agreements, { sort: 'urgent' }).map(({ id }) => id),
+    [1, 3, 2],
+  );
+  assert.deepEqual(
+    filterAndSortAgreements(agreements, { status: 'overdue', nowSeconds: 275 }).map(({ id }) => id),
+    [1],
+  );
+});
+
+test('summarizes escrow, statuses, workflow, and deadline risk for dashboard charts', () => {
+  const metrics = buildDashboardMetrics([
+    {
+      id: 1,
+      status: 0,
+      totalAmount: 100n,
+      remainingAmount: 70n,
+      deadline: 500,
+      currentMilestoneDueAt: 200,
+      currentMilestoneState: 0,
+    },
+    {
+      id: 2,
+      status: 0,
+      totalAmount: 200n,
+      remainingAmount: 150n,
+      deadline: 600,
+      currentMilestoneDueAt: 300,
+      currentMilestoneState: 1,
+    },
+    { id: 3, status: 1, totalAmount: 300n, remainingAmount: 0n, deadline: 400 },
+    { id: 4, status: 3, totalAmount: 400n, remainingAmount: 400n, deadline: 700 },
+  ], 100);
+
+  assert.equal(metrics.totalCount, 4);
+  assert.equal(metrics.activeCount, 2);
+  assert.equal(metrics.completedCount, 1);
+  assert.equal(metrics.disputedCount, 1);
+  assert.equal(metrics.totalAmount, 1_000n);
+  assert.equal(metrics.remainingAmount, 620n);
+  assert.equal(metrics.distributedAmount, 380n);
+  assert.equal(metrics.pendingEvidenceCount, 1);
+  assert.equal(metrics.awaitingApprovalCount, 1);
+  assert.equal(metrics.deadlineCounts.critical, 1);
+  assert.equal(metrics.nextDeadlineAgreement.id, 1);
+  assert.deepEqual(metrics.statusCounts.map(({ count }) => count), [2, 1, 0, 1, 0]);
+});
+
+test('assigns transparent carrier reputation tiers from on-chain points', () => {
+  assert.equal(getCarrierReputationTier(0n), 'New carrier');
+  assert.equal(getCarrierReputationTier(10n), 'Emerging carrier');
+  assert.equal(getCarrierReputationTier(50n), 'Established carrier');
+  assert.equal(getCarrierReputationTier(100n), 'Trusted carrier');
+  assert.equal(getCarrierReputationTier(250n), 'Elite carrier');
+});
+
+test('reads reputation and gracefully detects a deployment without reputation support', async () => {
+  assert.equal(
+    await readCarrierReputation({ carrierReputation: async () => 30n }, carrier),
+    30n,
+  );
+  assert.equal(
+    await readCarrierReputation({
+      carrierReputation: async () => {
+        const error = new Error('could not decode result data');
+        error.code = 'BAD_DATA';
+        throw error;
+      },
+    }, carrier),
+    null,
+  );
+});
+
+test('recognizes the deployer address regardless of checksum casing', () => {
+  assert.equal(addressesEqual(shipper, shipper.toLowerCase()), true);
+  assert.equal(addressesEqual(shipper, carrier), false);
+  assert.equal(addressesEqual(shipper, null), false);
+});
+
+test('builds the arbitrator case range and includes disputed and resolved records', () => {
+  assert.deepEqual(buildAgreementIds(3n), [0n, 1n, 2n]);
+  assert.equal(isArbitrationAgreement({ status: 3n }), true);
+  assert.equal(isArbitrationAgreement({ status: 4n }), true);
+  assert.equal(isArbitrationAgreement({ status: 0n }), false);
+});
+
+test('cryptographically verifies uploaded file bytes before payout approval', () => {
+  const receipt = new TextEncoder().encode('signed delivery receipt');
+  const altered = new TextEncoder().encode('altered delivery receipt');
+  const proofHash = hashEvidenceBytes(receipt);
+  assert.equal(proofHash, ethers.keccak256(receipt));
+  assert.equal(evidenceHashMatches(hashEvidenceBytes(receipt), proofHash), true);
+  assert.equal(evidenceHashMatches(hashEvidenceBytes(altered), proofHash), false);
+});
+
+test('builds safe IPFS gateway links and wallet upload authorization messages', () => {
+  assert.equal(normalizeGatewayBaseUrl('demo.mypinata.cloud/'), 'https://demo.mypinata.cloud');
+  assert.equal(ipfsUriToCid('ipfs://bafyReceipt123'), 'bafyReceipt123');
+  assert.equal(
+    getEvidenceGatewayUrl('ipfs://bafyReceipt123', 'demo.mypinata.cloud'),
+    'https://demo.mypinata.cloud/ipfs/bafyReceipt123',
+  );
+  const message = createUploadAuthorizationMessage({
+    account: carrier,
+    agreementId: '7',
+    contractAddress: shipper,
+    fileName: 'receipt.pdf',
+    fileSize: 1024,
+    mimeType: 'application/pdf',
+    milestoneIndex: 1,
+    nonce: '12345678-1234-1234-1234-123456789abc',
+    timestamp: 123456789,
+  });
+  assert.match(message, /ChainCargo evidence upload/);
+  assert.match(message, /Agreement: 7/);
+  assert.match(message, /File: receipt\.pdf/);
+});
 
 function validDraft() {
   return {

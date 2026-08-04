@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { useWallet } from '../context/WalletContext';
 import { useContract } from '../context/ContractContext';
 import { AGREEMENT_STATUS } from '../contracts/abi';
+import { buildAgreementIds, isArbitrationAgreement } from '../utils/arbitration';
 
 export function normalizeAgreement(id, agreement) {
   return {
@@ -23,7 +24,7 @@ export function normalizeAgreement(id, agreement) {
   };
 }
 
-export function useAgreements() {
+export function useAgreements({ arbitration = false } = {}) {
   const { account, isConnected } = useWallet();
   const { getReadContract, isConfigured, refreshKey } = useContract();
   const [agreements, setAgreements] = useState([]);
@@ -42,10 +43,25 @@ export function useAgreements() {
       setError('');
       try {
         const contract = await getReadContract();
-        const ids = await contract.getUserAgreementIds(account);
-        const results = await Promise.all(
-          ids.map(async (id) => normalizeAgreement(id, await contract.getAgreement(id))),
+        const ids = arbitration
+          ? buildAgreementIds(await contract.agreementCount())
+          : await contract.getUserAgreementIds(account);
+        let results = await Promise.all(
+          ids.map(async (id) => {
+            const agreement = normalizeAgreement(id, await contract.getAgreement(id));
+            if (agreement.status !== 0) return agreement;
+
+            const milestones = await contract.getMilestones(id);
+            const currentMilestone = milestones[agreement.nextMilestone];
+            return {
+              ...agreement,
+              currentMilestoneDueAt: currentMilestone ? Number(currentMilestone.dueAt) : null,
+              currentMilestoneName: currentMilestone?.name || '',
+              currentMilestoneState: currentMilestone ? Number(currentMilestone.state) : null,
+            };
+          }),
         );
+        if (arbitration) results = results.filter(isArbitrationAgreement);
         if (!cancelled) setAgreements(results.reverse());
       } catch (loadError) {
         if (!cancelled) setError(loadError.message);
@@ -58,7 +74,7 @@ export function useAgreements() {
     return () => {
       cancelled = true;
     };
-  }, [account, getReadContract, isConfigured, isConnected, refreshKey]);
+  }, [account, arbitration, getReadContract, isConfigured, isConnected, refreshKey]);
 
   return { agreements, loading, error };
 }

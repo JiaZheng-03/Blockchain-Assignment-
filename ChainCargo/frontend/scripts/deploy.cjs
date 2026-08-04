@@ -13,6 +13,17 @@ async function main() {
       "SEPOLIA_RPC_URL is missing. Copy .env.example to .env and add your Sepolia RPC endpoint.",
     );
   }
+  const configuredPrivateKey = process.env.DEPLOYER_PRIVATE_KEY?.startsWith("0x")
+    ? process.env.DEPLOYER_PRIVATE_KEY
+    : `0x${process.env.DEPLOYER_PRIVATE_KEY || ""}`;
+  if (
+    hre.network.name === "sepolia" &&
+    !/^0x[0-9a-fA-F]{64}$/.test(configuredPrivateKey)
+  ) {
+    throw new Error(
+      "DEPLOYER_PRIVATE_KEY must contain exactly 64 hexadecimal characters, optionally prefixed by 0x.",
+    );
+  }
 
   const network = await hre.ethers.provider.getNetwork();
   const chainId = Number(network.chainId);

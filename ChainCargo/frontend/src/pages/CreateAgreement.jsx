@@ -10,6 +10,10 @@ import {
   validateAgreementBasics,
   validateAgreementDraft,
 } from '../utils/agreementValidation';
+import {
+  getCarrierReputationTier,
+  readCarrierReputation,
+} from '../utils/carrierReputation';
 
 const emptyMilestone = () => ({ name: '', details: '', percentage: '', dueAt: '' });
 
@@ -77,8 +81,18 @@ function CreateAgreement() {
         const addresses = await contract.getUsersByRole(2);
         const entries = await Promise.all(
           addresses.map(async (address) => {
-            const carrierProfile = await contract.getProfile(address);
-            return { address, name: carrierProfile.name };
+            const [carrierProfile, reputation] = await Promise.all([
+              contract.getProfile(address),
+              readCarrierReputation(contract, address),
+            ]);
+            return {
+              address,
+              name: carrierProfile.name,
+              reputation,
+              reputationTier: reputation === null
+                ? 'Redeploy required'
+                : getCarrierReputationTier(reputation),
+            };
           }),
         );
         if (!cancelled) {
@@ -297,6 +311,9 @@ function CreateAgreement() {
     (sum, milestone) => sum + (Number(milestone.percentage) || 0),
     0,
   );
+  const selectedCarrier = registeredCarriers.find(
+    (carrier) => carrier.address.toLowerCase() === form.carrier.toLowerCase(),
+  );
 
   return (
     <div className="form-card agreement-wizard">
@@ -328,7 +345,7 @@ function CreateAgreement() {
           <section className="wizard-section">
             <div>
               <h3>Agreement Details</h3>
-              <p>Enter the parties, total escrow amount, and final shipment deadline.</p>
+              <p>Enter the parties, total payload/escrow value, and final shipment deadline.</p>
             </div>
             <label>Agreement Name<input name="title" value={form.title} onChange={updateForm} required placeholder="Shipment #001" /></label>
             <label>
@@ -345,7 +362,7 @@ function CreateAgreement() {
                 </option>
                 {registeredCarriers.map((carrier) => (
                   <option key={carrier.address} value={carrier.address}>
-                    {carrier.name} · {formatAddress(carrier.address)}
+                    {carrier.name} · {formatAddress(carrier.address)} · {carrier.reputation === null ? 'score unavailable' : `${carrier.reputation.toString()} pts`}
                   </option>
                 ))}
               </select>
@@ -353,6 +370,20 @@ function CreateAgreement() {
                 Only wallets registered on-chain as Carrier are listed. Found {registeredCarriers.length}.
               </small>
             </label>
+            {selectedCarrier && (
+              <div className="carrier-reputation-preview">
+                <span className="reputation-mark">★</span>
+                <span>
+                  <small>On-chain carrier reputation</small>
+                  <strong>
+                    {selectedCarrier.reputation === null
+                      ? 'Redeploy the updated contract to enable points'
+                      : `${selectedCarrier.reputation.toString()} points · ${selectedCarrier.reputationTier}`}
+                  </strong>
+                </span>
+                <small>Earned only when Shippers approve completed milestones.</small>
+              </div>
+            )}
             {carrierDirectoryError && <div className="notice error">{carrierDirectoryError}</div>}
             {!carriersLoading && !registeredCarriers.length && !carrierDirectoryError && (
               <div className="notice">
@@ -360,7 +391,11 @@ function CreateAgreement() {
                 and register it as Carrier before continuing.
               </div>
             )}
-            <label>Total Escrow Amount (ETH)<input name="totalAmount" value={form.totalAmount} onChange={updateForm} required min="0.000001" step="any" type="number" placeholder="10" /></label>
+            <label>
+              Total Payload / Escrow Value (ETH)
+              <input name="totalAmount" value={form.totalAmount} onChange={updateForm} required min="0.000001" step="any" type="number" placeholder="10" />
+              <small>The full payable value is locked in the smart contract and divided across milestones.</small>
+            </label>
             <label>
               Final Delivery Deadline
               <input name="deadline" value={form.deadline} onChange={updateForm} required min={minimumDateTime} type="datetime-local" />
@@ -435,8 +470,16 @@ function CreateAgreement() {
             </div>
             <div className="review-grid">
               <div><small>Agreement</small><strong>{form.title}</strong></div>
-              <div><small>Total escrow</small><strong>{form.totalAmount} ETH</strong></div>
+              <div><small>Payload / escrow value</small><strong>{form.totalAmount} ETH</strong></div>
               <div><small>Carrier</small><code>{form.carrier}</code></div>
+              <div>
+                <small>Carrier reputation</small>
+                <strong>
+                  {selectedCarrier?.reputation === null || !selectedCarrier
+                    ? 'Unavailable until redeployment'
+                    : `${selectedCarrier.reputation.toString()} points · ${selectedCarrier.reputationTier}`}
+                </strong>
+              </div>
               <div><small>Final deadline</small><strong>{new Date(form.deadline).toLocaleString()}</strong></div>
             </div>
             <div className="review-milestones">

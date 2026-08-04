@@ -7,9 +7,10 @@ ChainCargo is a full-stack Ethereum dApp for milestone-based logistics agreement
 | Requirement | Implementation |
 | --- | --- |
 | Registration and authentication | MetaMask wallet authentication plus on-chain Shipper/Carrier registration |
-| Agreement creation | Title, carrier, notes, final deadline, ordered milestones, due dates, and payout percentages |
+| Agreement creation | Title, carrier, notes, funded payload/escrow value, final deadline, ordered milestones, due dates, and payout percentages |
 | Funding | `createAgreement` is payable and requires milestone payouts to exactly equal deposited ETH |
-| Milestones and payouts | Carrier submits a `keccak256` evidence hash; shipper approval releases that milestone's exact payout |
+| Milestones and payouts | Carrier uploads evidence to Pinata IPFS and submits its `keccak256` file hash plus CID; the Shipper UI downloads and verifies the same file before approval releases that milestone's exact payout |
+| Carrier reputation | Every Shipper-approved milestone awards the assigned Carrier 10 immutable on-chain reputation points; proof submission, refunds, and dispute payouts award no points |
 | Refunds and disputes | Permissionless refund when the current milestone remains unsubmitted after its deadline; either party can pause escrow and open a dispute; deployer/arbitrator resolves the remaining split |
 | Transaction history | Dashboard lists wallet agreements and History reconstructs chronological activity from contract events |
 | Smart-contract UI integration | React, ethers v6, MetaMask, live contract reads/writes, transaction confirmations, and error reporting |
@@ -23,6 +24,8 @@ ChainCargo is a full-stack Ethereum dApp for milestone-based logistics agreement
 - React 19 and Vite
 - ethers v6
 - MetaMask
+- Pinata IPFS for off-chain evidence files
+- Express signing API for protected Pinata uploads
 
 ## Sepolia setup
 
@@ -44,9 +47,12 @@ Copy-Item .env.example .env
 SEPOLIA_RPC_URL=https://your-sepolia-rpc-provider.example/v2/api-key
 DEPLOYER_PRIVATE_KEY=0xYOUR_DEPLOYER_WALLET_PRIVATE_KEY
 VITE_ESCROW_CHAIN_ID=11155111
+PINATA_JWT=your-server-only-pinata-jwt
+PINATA_GATEWAY=your-gateway.mypinata.cloud
+PINATA_API_PORT=3001
 ```
 
-Never commit `.env`. The deployer wallet needs a small amount of Sepolia ETH for gas.
+Never commit `.env`. The deployer wallet needs a small amount of Sepolia ETH for gas. The Pinata JWT is server-only and must never use a `VITE_` prefix.
 
 Deploy the contract once:
 
@@ -80,8 +86,8 @@ The Dashboard and Profile read the balance of the currently selected MetaMask ac
 1. Open **Setup**, connect the first MetaMask account, switch to Sepolia, and register it as **Shipper**.
 2. Authorize a second MetaMask account and register it as **Carrier**.
 3. Switch back to the Shipper and open **Create Agreement**. Choose the Carrier from the on-chain directory, define chronological milestones totalling 100%, and fund the escrow.
-4. Switch to the carrier, open the agreement, enter evidence text or a document fingerprint and an optional IPFS URI, then submit the cryptographic proof.
-5. Switch to the shipper, inspect the immutable evidence hash, and approve the milestone. MetaMask shows the payout transaction and the carrier receives ETH.
+4. Switch to the Carrier, open the agreement, select a receipt/photo/PDF, authorize its signed Pinata upload, then submit the returned IPFS CID and file hash on-chain.
+5. Switch to the Shipper, open and review the IPFS file, verify its bytes against the immutable hash, and approve the milestone. MetaMask shows the payout transaction, the Carrier receives ETH, and 10 reputation points are recorded on-chain.
 6. Repeat for final delivery, or demonstrate a deadline refund with a short due date.
 7. Open **History** to show the event timeline and transaction hashes.
 
@@ -104,7 +110,10 @@ npm run deploy:local     # deploy and update frontend address/ABI
 npm run seed:local       # add repeatable demo roles and a funded agreement
 npm run demo:local       # deploy, then seed the local demo
 npm run deploy:sepolia   # deploy the coursework contract to Sepolia
-npm run dev              # start Vite
+npm run dev              # start the protected Pinata API and Vite together
+npm run dev:api          # start only the Pinata signing API on port 3001
+npm run dev:ui           # start only Vite (uploads require the API)
+npm start                # serve the production dist folder and Pinata API
 ```
 
 The `chain`, `deploy:local`, `seed:local`, and `demo:local` commands are development helpers only. The submitted application uses Sepolia.
@@ -116,6 +125,7 @@ The `chain`, `deploy:local`, `seed:local`, and `demo:local` commands are develop
 - Evidence submitted on time remains eligible for Shipper approval after the wall-clock deadline; it cannot be bypassed with a refund.
 - The browser displays `datetime-local` values in the computer's local timezone; Solidity stores the equivalent Unix timestamp in UTC.
 - Sepolia data persists across browser and computer restarts.
+- Pinata evidence is public through its IPFS CID; use dummy or encrypted files, never sensitive commercial records.
 - If the UI reports the wrong network, switch MetaMask to Sepolia chain `11155111`.
 - If the contract is redeployed, commit the updated `src/contracts/deployment.json` so every team member uses the same Sepolia address.
 

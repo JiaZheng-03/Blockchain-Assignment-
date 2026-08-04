@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useWallet } from '../context/WalletContext';
 import { useContract } from '../context/ContractContext';
 import { ROLE_LABELS } from '../contracts/abi';
+import { addressesEqual } from '../utils/address';
 
 function AccountPermissionDialog() {
   const {
@@ -28,16 +29,24 @@ function AccountPermissionDialog() {
       try {
         setProfilesLoading(true);
         const contract = await getReadContract();
-        const entries = await Promise.all(
-          authorizedAccounts.map(async (address) => {
-            const profile = await contract.getProfile(address);
-            return [address.toLowerCase(), {
-              name: profile.name,
-              role: Number(profile.role),
-            }];
-          }),
-        );
-        if (!cancelled) setProfiles(Object.fromEntries(entries));
+        const [arbitratorAddress, entries] = await Promise.all([
+          contract.arbitrator(),
+          Promise.all(
+            authorizedAccounts.map(async (address) => {
+              const profile = await contract.getProfile(address);
+              return [address.toLowerCase(), {
+                name: profile.name,
+                role: Number(profile.role),
+              }];
+            }),
+          ),
+        ]);
+        if (!cancelled) {
+          setProfiles(Object.fromEntries(entries.map(([address, profile]) => [
+            address,
+            { ...profile, isArbitrator: addressesEqual(address, arbitratorAddress) },
+          ])));
+        }
       } catch {
         if (!cancelled) setProfiles({});
       } finally {
@@ -74,8 +83,22 @@ function AccountPermissionDialog() {
                   onClick={() => selectAuthorizedAccount(address)}
                 >
                   <span>
-                    <strong>{profilesLoading ? 'Checking role…' : profile?.role ? ROLE_LABELS[profile.role] : 'Unregistered'}</strong>
-                    <small>{profilesLoading ? 'Reading contract profile' : profile?.name || 'No on-chain profile'}</small>
+                    <strong>
+                      {profilesLoading
+                        ? 'Checking role…'
+                        : profile?.isArbitrator
+                          ? 'Arbitrator'
+                          : profile?.role
+                            ? ROLE_LABELS[profile.role]
+                            : 'Unregistered'}
+                    </strong>
+                    <small>
+                      {profilesLoading
+                        ? 'Reading contract profile'
+                        : profile?.isArbitrator
+                          ? 'Contract deployer'
+                          : profile?.name || 'No on-chain profile'}
+                    </small>
                   </span>
                   <code>{formatAddress(address)}</code>
                   {isCurrent && <span className="badge">Current</span>}

@@ -45,7 +45,13 @@ function Setup() {
     isCorrectNetwork,
     switchToExpectedNetwork,
   } = useContract();
-  const { isRegistered, loading: profileLoading, profile } = useProfile();
+  const {
+    hasAppAccess,
+    isArbitrator,
+    isRegistered,
+    loading: profileLoading,
+    profile,
+  } = useProfile();
   const [actionError, setActionError] = useState('');
 
   const perform = async (action) => {
@@ -59,7 +65,7 @@ function Setup() {
 
   const hasMetaMask = typeof window !== 'undefined' && Boolean(window.ethereum?.isMetaMask);
   const deploymentReady = deploymentStatus === 'ready';
-  const setupComplete = isConnected && isCorrectNetwork && deploymentReady && isRegistered;
+  const setupComplete = isConnected && isCorrectNetwork && deploymentReady && hasAppAccess;
 
   return (
     <section className="setup-page">
@@ -127,15 +133,17 @@ function Setup() {
           )}
         </ChecklistItem>
 
-        <ChecklistItem complete={isRegistered} number="4" title="Register this wallet’s role">
+        <ChecklistItem complete={hasAppAccess} number="4" title="Recognize this wallet’s role">
           {profileLoading ? (
             <p>Reading registration from the contract…</p>
+          ) : isArbitrator ? (
+            <p>Recognized automatically as the contract <strong>Arbitrator</strong>.</p>
           ) : isRegistered ? (
             <p>Registered as <strong>{profile.roleLabel}</strong>: {profile.name}</p>
           ) : (
             <p>Use one address as Shipper and a different address as Carrier.</p>
           )}
-          {isConnected && isCorrectNetwork && deploymentReady && !isRegistered && (
+          {isConnected && isCorrectNetwork && deploymentReady && !hasAppAccess && (
             <div className="role-grid">
               <Link className="role-card" to="/register?role=shipper">
                 <span className="role-icon">S</span>
@@ -155,7 +163,11 @@ function Setup() {
           <div className="notice success setup-complete">
             <div>
               <strong>This wallet is ready.</strong>
-              <p>Open the dashboard, or authorize your second testing account.</p>
+              <p>
+                {isArbitrator
+                  ? 'Open the dashboard to review disputed agreements.'
+                  : 'Open the dashboard, or authorize your second testing account.'}
+              </p>
             </div>
             <div className="wizard-actions">
               <button className="btn btn-secondary" onClick={switchWallet} type="button">Switch wallet</button>

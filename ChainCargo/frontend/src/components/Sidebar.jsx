@@ -2,14 +2,14 @@ import { NavLink } from 'react-router-dom';
 import { useProfile } from '../hooks/useProfile';
 
 function Sidebar() {
-  const { isRegistered, isShipper } = useProfile();
+  const { hasAppAccess, isArbitrator, isShipper } = useProfile();
   const links = [
     { to: '/setup', label: 'Setup & Demo Flow' },
-    ...(isRegistered ? [{ to: '/dashboard', label: 'Dashboard' }] : []),
-    ...(isRegistered && isShipper ? [{ to: '/create-agreement', label: 'Create Agreement' }] : []),
-    ...(isRegistered ? [
-      { to: '/history', label: 'History' },
-      { to: '/profile', label: 'Profile' },
+    ...(hasAppAccess ? [{ to: '/dashboard', label: isArbitrator ? 'Arbitration' : 'Dashboard' }] : []),
+    ...(hasAppAccess && isShipper ? [{ to: '/create-agreement', label: 'Create Agreement' }] : []),
+    ...(hasAppAccess ? [
+      { to: '/history', label: isArbitrator ? 'Dispute History' : 'History' },
+      { to: '/profile', label: isArbitrator ? 'Arbitrator Account' : 'Profile' },
     ] : []),
   ];
 

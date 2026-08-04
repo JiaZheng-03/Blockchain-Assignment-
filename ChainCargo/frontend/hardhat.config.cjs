@@ -9,6 +9,7 @@ const normalizedPrivateKey = deployerPrivateKey
     ? deployerPrivateKey
     : `0x${deployerPrivateKey}`
   : null;
+const hasValidPrivateKey = /^0x[0-9a-fA-F]{64}$/.test(normalizedPrivateKey || "");
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -31,7 +32,9 @@ module.exports = {
   networks: {
     sepolia: {
       url: sepoliaRpcUrl,
-      accounts: normalizedPrivateKey ? [normalizedPrivateKey] : [],
+      // Local compilation/tests must not fail when a deployment key is absent or redacted.
+      // The deployment script reports an actionable error before a Sepolia deployment.
+      accounts: hasValidPrivateKey ? [normalizedPrivateKey] : [],
       chainId: 11155111,
     },
   },

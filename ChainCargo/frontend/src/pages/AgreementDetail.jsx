@@ -1,10 +1,20 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ethers } from 'ethers';
 import { useParams } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { friendlyContractError, useContract } from '../context/ContractContext';
 import { MILESTONE_STATUS } from '../contracts/abi';
 import { normalizeAgreement } from '../hooks/useAgreements';
+import { useCarrierReputation } from '../hooks/useCarrierReputation';
+import {
+  EVIDENCE_FILE_ACCEPT,
+  getEvidenceGatewayUrl,
+  normalizeGatewayBaseUrl,
+  uploadEvidenceToPinata,
+  validateEvidenceFileMetadata,
+  verifyEvidenceFromGateway,
+} from '../utils/pinataEvidence';
+import { getDeadlineState } from '../utils/deadlineAlerts';
 
 const shortAddress = (address) => `${address.slice(0, 6)}…${address.slice(-4)}`;
 const formatDate = (timestamp) => new Date(timestamp * 1000).toLocaleString();
@@ -12,13 +22,16 @@ const formatDate = (timestamp) => new Date(timestamp * 1000).toLocaleString();
 function AgreementDetail() {
   const { id } = useParams();
   const { account } = useWallet();
-  const { getReadContract, getWriteContract, isConfigured, refreshKey, waitForTransaction } =
+  const { address, getReadContract, getWriteContract, isConfigured, refreshKey, waitForTransaction } =
     useContract();
+  const evidenceFileInputRef = useRef(null);
   const [agreement, setAgreement] = useState(null);
   const [milestones, setMilestones] = useState([]);
   const [canRefund, setCanRefund] = useState(false);
-  const [proofText, setProofText] = useState('');
-  const [proofURI, setProofURI] = useState('');
+  const [evidenceFile, setEvidenceFile] = useState(null);
+  const [gatewayBaseUrl, setGatewayBaseUrl] = useState(normalizeGatewayBaseUrl(''));
+  const [uploadStatus, setUploadStatus] = useState('');
+  const [verification, setVerification] = useState(null);
   const [disputeReason, setDisputeReason] = useState('');
   const [resolutionEth, setResolutionEth] = useState('');
   const [arbitrator, setArbitrator] = useState('');
@@ -26,6 +39,7 @@ function AgreementDetail() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [nowSeconds, setNowSeconds] = useState(0);
+  const carrierReputation = useCarrierReputation(agreement?.carrier || null);
 
   const load = useCallback(async () => {
     if (!isConfigured) {
@@ -75,9 +89,31 @@ function AgreementDetail() {
   useEffect(() => {
     const updateTime = () => setNowSeconds(Math.floor(Date.now() / 1000));
     updateTime();
-    const timer = window.setInterval(updateTime, 30_000);
+    const timer = window.setInterval(updateTime, 1_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/pinata/config')
+      .then((response) => response.ok ? response.json() : null)
+      .then((config) => {
+        if (!cancelled && config?.gatewayBaseUrl) {
+          setGatewayBaseUrl(normalizeGatewayBaseUrl(config.gatewayBaseUrl));
+        }
+      })
+      .catch(() => {
+        // Public gateway fallback remains available for previously uploaded IPFS evidence.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setVerification(null);
+    setUploadStatus('');
+  }, [account, id, refreshKey]);
 
   const transact = async (action, callback) => {
     try {
@@ -86,12 +122,82 @@ function AgreementDetail() {
       const contract = await getWriteContract();
       const transaction = await callback(contract);
       await waitForTransaction(transaction);
-      setProofText('');
-      setProofURI('');
+      setVerification(null);
       setDisputeReason('');
       setResolutionEth('');
     } catch (actionError) {
       setError(friendlyContractError(actionError));
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const selectEvidenceFile = (file) => {
+    try {
+      if (file) validateEvidenceFileMetadata(file);
+      setEvidenceFile(file || null);
+      setUploadStatus('');
+      setError('');
+    } catch (fileError) {
+      setEvidenceFile(null);
+      if (evidenceFileInputRef.current) evidenceFileInputRef.current.value = '';
+      setError(fileError.message);
+    }
+  };
+
+  const submitEvidence = async (milestone) => {
+    if (!evidenceFile) return;
+    try {
+      setBusyAction('proof');
+      setError('');
+      setUploadStatus('Confirm the evidence-upload authorization in MetaMask…');
+      const contract = await getWriteContract();
+      const upload = await uploadEvidenceToPinata({
+        account,
+        agreementId: id,
+        contractAddress: address,
+        file: evidenceFile,
+        milestoneIndex: milestone.index,
+        signMessage: (message) => contract.runner.signMessage(message),
+      });
+      setUploadStatus('Uploaded to IPFS. Confirm the on-chain evidence transaction in MetaMask…');
+      const transaction = await contract.submitMilestoneProof(
+        id,
+        milestone.index,
+        upload.proofHash,
+        upload.proofURI,
+      );
+      await waitForTransaction(transaction);
+      setEvidenceFile(null);
+      setUploadStatus('');
+      if (evidenceFileInputRef.current) evidenceFileInputRef.current.value = '';
+    } catch (uploadError) {
+      setUploadStatus('');
+      setError(friendlyContractError(uploadError));
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const verifyEvidence = async (milestone) => {
+    try {
+      setBusyAction('verify');
+      setVerification({ milestoneIndex: milestone.index, status: 'checking' });
+      const gatewayUrl = getEvidenceGatewayUrl(milestone.proofURI, gatewayBaseUrl);
+      const result = await verifyEvidenceFromGateway({
+        expectedHash: milestone.proofHash,
+        gatewayUrl,
+      });
+      setVerification({
+        milestoneIndex: milestone.index,
+        status: result.matches ? 'verified' : 'failed',
+      });
+    } catch (verificationError) {
+      setVerification({
+        message: verificationError.message,
+        milestoneIndex: milestone.index,
+        status: 'failed',
+      });
     } finally {
       setBusyAction('');
     }
@@ -106,11 +212,16 @@ function AgreementDetail() {
   const isCarrier = normalizedAccount === agreement.carrier.toLowerCase();
   const isArbitrator = normalizedAccount === arbitrator.toLowerCase();
   const currentMilestone = milestones[agreement.nextMilestone];
+  const currentMilestonePending = agreement.status === 0 && currentMilestone?.state === 0;
+  const activeDeadline = currentMilestonePending ? currentMilestone.dueAt : agreement.deadline;
+  const deadlineState = getDeadlineState(activeDeadline, nowSeconds, agreement.status === 0);
+  const refundAvailable = canRefund
+    || (currentMilestonePending && nowSeconds > currentMilestone.dueAt);
   let nextStep = {
     title: 'This agreement is closed',
     detail: `Final status: ${agreement.statusLabel}. Review the immutable milestones and transaction history.`,
   };
-  if (agreement.status === 0 && canRefund) {
+  if (agreement.status === 0 && refundAvailable) {
     nextStep = {
       title: 'A deadline refund is available',
       detail: 'The current required checkpoint or final deadline has passed. Claiming returns all remaining escrow to the Shipper.',
@@ -119,7 +230,7 @@ function AgreementDetail() {
     nextStep = isCarrier
       ? {
           title: `Submit evidence for milestone ${currentMilestone.index + 1}`,
-          detail: 'Hash the delivery evidence below and confirm the transaction in MetaMask before its due date.',
+          detail: 'Upload the receipt or photo to IPFS and confirm its immutable hash on-chain before the due date.',
         }
       : {
           title: `Waiting for Carrier evidence on milestone ${currentMilestone.index + 1}`,
@@ -129,7 +240,7 @@ function AgreementDetail() {
     nextStep = isShipper
       ? {
           title: `Verify milestone ${currentMilestone.index + 1} and release payment`,
-          detail: 'Inspect the evidence hash and URI, then confirm the exact milestone payout in MetaMask.',
+          detail: 'Open the uploaded evidence, verify its file hash, then confirm the exact milestone payout in MetaMask.',
         }
       : {
           title: 'Evidence submitted — awaiting Shipper approval',
@@ -163,11 +274,32 @@ function AgreementDetail() {
         <div className="detail-grid">
           <div><small>Shipper</small><strong title={agreement.shipper}>{shortAddress(agreement.shipper)}</strong></div>
           <div><small>Carrier</small><strong title={agreement.carrier}>{shortAddress(agreement.carrier)}</strong></div>
+          <div>
+            <small>Carrier reputation</small>
+            <strong>
+              {carrierReputation.loading
+                ? 'Loading…'
+                : carrierReputation.supported
+                  ? `${carrierReputation.pointsLabel} points · ${carrierReputation.tier}`
+                  : 'Redeploy required'}
+            </strong>
+          </div>
           <div><small>Total funded</small><strong>{agreement.totalEth} ETH</strong></div>
           <div><small>Escrow remaining</small><strong>{agreement.remainingEth} ETH</strong></div>
           <div><small>Created</small><strong>{formatDate(agreement.createdAt)}</strong></div>
           <div><small>Final deadline</small><strong>{formatDate(agreement.deadline)}</strong></div>
         </div>
+        {agreement.status === 0 && (
+          <div className={`deadline-indicator deadline-${deadlineState.level}`} aria-live="polite">
+            <span className="eyebrow">
+              {currentMilestonePending ? 'Current milestone deadline' : 'Final delivery deadline'}
+            </span>
+            <strong>{deadlineState.countdown}</strong>
+            {refundAvailable && (
+              <span>The pending milestone was missed. Remaining escrow can now be refunded to the Shipper.</span>
+            )}
+          </div>
+        )}
         <div className="notice next-step-notice">
           <span className="eyebrow">Current workflow state</span>
           <strong>{nextStep.title}</strong>
@@ -178,7 +310,7 @@ function AgreementDetail() {
         {agreement.status === 0 && (isShipper || isCarrier) && (
           <div className="action-panel">
             <h3>Agreement actions</h3>
-            {canRefund && (
+            {refundAvailable && (
               <button
                 className="btn btn-danger"
                 disabled={Boolean(busyAction)}
@@ -231,6 +363,11 @@ function AgreementDetail() {
             const isCurrent = milestone.index === agreement.nextMilestone && agreement.status === 0;
             const milestoneExpired = nowSeconds > milestone.dueAt;
             const agreementExpired = nowSeconds > agreement.deadline;
+            const evidenceUrl = getEvidenceGatewayUrl(milestone.proofURI, gatewayBaseUrl);
+            const verificationForMilestone = verification?.milestoneIndex === milestone.index
+              ? verification
+              : null;
+            const evidenceVerified = verificationForMilestone?.status === 'verified';
             const percentage = Number((milestone.payout * 10000n) / agreement.totalAmount) / 100;
             return (
               <article className={`milestone-row state-${milestone.state}`} key={milestone.index}>
@@ -248,35 +385,78 @@ function AgreementDetail() {
                     <div className="proof-box">
                       <small>Immutable evidence hash</small>
                       <code>{milestone.proofHash}</code>
-                      {milestone.proofURI && <a href={milestone.proofURI} target="_blank" rel="noreferrer">{milestone.proofURI}</a>}
+                      {evidenceUrl ? (
+                        <a href={evidenceUrl} target="_blank" rel="noreferrer">Open receipt or photo from IPFS</a>
+                      ) : milestone.proofURI ? (
+                        <code>{milestone.proofURI}</code>
+                      ) : null}
                       <span>Submitted {formatDate(milestone.submittedAt)}</span>
                     </div>
                   )}
                   {isCurrent && isCarrier && milestone.state === 0 && !milestoneExpired && !agreementExpired && (
                     <div className="evidence-form">
-                      <input value={proofText} onChange={(event) => setProofText(event.target.value)} placeholder="Evidence content or document fingerprint" />
-                      <input value={proofURI} onChange={(event) => setProofURI(event.target.value)} placeholder="Evidence URI (e.g. ipfs://…)" />
+                      <label>
+                        Receipt, delivery photo, or supporting PDF
+                        <input
+                          accept={EVIDENCE_FILE_ACCEPT}
+                          onChange={(event) => selectEvidenceFile(event.target.files?.[0])}
+                          ref={evidenceFileInputRef}
+                          type="file"
+                        />
+                      </label>
+                      {evidenceFile && (
+                        <small>
+                          Selected: {evidenceFile.name} · {(evidenceFile.size / 1024).toFixed(1)} KB
+                        </small>
+                      )}
+                      {uploadStatus && <div className="notice">{uploadStatus}</div>}
                       <button
                         className="btn btn-primary"
-                        disabled={Boolean(busyAction) || !proofText}
-                        onClick={() => transact('proof', (contract) =>
-                          contract.submitMilestoneProof(id, milestone.index, ethers.keccak256(ethers.toUtf8Bytes(proofText)), proofURI))}
+                        disabled={Boolean(busyAction) || !evidenceFile}
+                        onClick={() => submitEvidence(milestone)}
                       >
-                        Submit cryptographic proof
+                        {busyAction === 'proof' ? 'Uploading evidence…' : 'Upload to IPFS & submit proof'}
                       </button>
+                      <small>
+                        The file is stored on Pinata IPFS. Only its CID and Keccak-256 hash are stored on-chain.
+                      </small>
                     </div>
                   )}
                   {isCurrent && isCarrier && milestone.state === 0 && (milestoneExpired || agreementExpired) && (
                     <div className="notice error">The proof deadline has passed. Evidence can no longer be submitted.</div>
                   )}
                   {isCurrent && isShipper && milestone.state === 1 && (
-                    <button
-                      className="btn btn-primary"
-                      disabled={Boolean(busyAction)}
-                      onClick={() => transact('approve', (contract) => contract.approveMilestone(id, milestone.index))}
-                    >
-                      {busyAction === 'approve' ? 'Releasing payment…' : `Verify & release ${milestone.payoutEth} ETH`}
-                    </button>
+                    <div className="evidence-form">
+                      <strong>Review and verify evidence before payout</strong>
+                      {evidenceUrl && (
+                        <a className="btn btn-secondary" href={evidenceUrl} target="_blank" rel="noreferrer">
+                          Open receipt or photo
+                        </a>
+                      )}
+                      <button
+                        className="btn btn-secondary"
+                        disabled={Boolean(busyAction) || !evidenceUrl}
+                        onClick={() => verifyEvidence(milestone)}
+                      >
+                        {verificationForMilestone?.status === 'checking'
+                          ? 'Verifying downloaded file…'
+                          : 'Verify file integrity'}
+                      </button>
+                      {verificationForMilestone?.status && verificationForMilestone.status !== 'checking' && (
+                        <div className={`notice ${evidenceVerified ? 'success' : 'error'}`}>
+                          {evidenceVerified
+                            ? 'Cryptographic verification passed. The IPFS file matches the immutable on-chain hash.'
+                            : verificationForMilestone.message || 'Verification failed. The downloaded file does not match the on-chain hash; do not release payment.'}
+                        </div>
+                      )}
+                      <button
+                        className="btn btn-primary"
+                        disabled={Boolean(busyAction) || !evidenceVerified}
+                        onClick={() => transact('approve', (contract) => contract.approveMilestone(id, milestone.index))}
+                      >
+                        {busyAction === 'approve' ? 'Releasing payment…' : `Release verified payout · ${milestone.payoutEth} ETH`}
+                      </button>
+                    </div>
                   )}
                   {isCurrent && isShipper && milestone.state === 1 && agreementExpired && (
                     <div className="notice">

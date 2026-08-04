@@ -82,6 +82,7 @@ contract LogisticsEscrow {
 
     address public immutable arbitrator;
     uint256 public constant MAX_MILESTONES = 20;
+    uint256 public constant REPUTATION_POINTS_PER_MILESTONE = 10;
     uint256 public agreementCount;
 
     mapping(address => UserProfile) private profiles;
@@ -89,6 +90,7 @@ contract LogisticsEscrow {
     mapping(uint256 => Agreement) private agreements;
     mapping(uint256 => Milestone[]) private milestones;
     mapping(address => uint256[]) private userAgreementIds;
+    mapping(address => uint256) public carrierReputation;
 
     uint256 private unlocked = 1;
 
@@ -110,6 +112,13 @@ contract LogisticsEscrow {
         uint256 indexed agreementId,
         uint256 indexed milestoneIndex,
         uint256 payout
+    );
+    event CarrierReputationAwarded(
+        address indexed carrier,
+        uint256 indexed agreementId,
+        uint256 indexed milestoneIndex,
+        uint256 points,
+        uint256 totalPoints
     );
     event AgreementCompleted(uint256 indexed agreementId);
     event Refunded(uint256 indexed agreementId, address indexed shipper, uint256 amount);
@@ -274,12 +283,20 @@ contract LogisticsEscrow {
         milestone.approvedAt = uint64(block.timestamp);
         agreement.nextMilestone += 1;
         agreement.remainingAmount -= payout;
+        carrierReputation[agreement.carrier] += REPUTATION_POINTS_PER_MILESTONE;
 
         if (agreement.nextMilestone == milestones[agreementId].length) {
             agreement.status = AgreementStatus.Completed;
             emit AgreementCompleted(agreementId);
         }
         emit MilestoneApproved(agreementId, milestoneIndex, payout);
+        emit CarrierReputationAwarded(
+            agreement.carrier,
+            agreementId,
+            milestoneIndex,
+            REPUTATION_POINTS_PER_MILESTONE,
+            carrierReputation[agreement.carrier]
+        );
         _sendValue(agreement.carrier, payout);
     }
 

@@ -77,16 +77,23 @@ describe("LogisticsEscrow", function () {
 
     const proof = ethers.keccak256(ethers.toUtf8Bytes("signed pickup document"));
     await escrow.connect(carrier).submitMilestoneProof(0, 0, proof, "ipfs://pickup");
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(0);
+    expect(await escrow.REPUTATION_POINTS_PER_MILESTONE()).to.equal(10);
 
-    await expect(escrow.connect(shipper).approveMilestone(0, 0))
+    const approval = escrow.connect(shipper).approveMilestone(0, 0);
+    await expect(approval)
       .to.changeEtherBalances(
         [escrow, carrier],
         [-payouts[0], payouts[0]],
       );
+    await expect(approval)
+      .to.emit(escrow, "CarrierReputationAwarded")
+      .withArgs(carrier.address, 0, 0, 10, 10);
 
     const agreement = await escrow.getAgreement(0);
     expect(agreement.remainingAmount).to.equal(payouts[1]);
     expect(agreement.nextMilestone).to.equal(1);
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(10);
   });
 
   it("completes after the final verified milestone", async function () {
@@ -102,6 +109,7 @@ describe("LogisticsEscrow", function () {
     const agreement = await escrow.getAgreement(0);
     expect(agreement.status).to.equal(1);
     expect(agreement.remainingAmount).to.equal(0);
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(20);
   });
 
   it("refunds remaining escrow after an unsubmitted milestone deadline", async function () {
@@ -115,6 +123,7 @@ describe("LogisticsEscrow", function () {
         [-ethers.parseEther("10"), ethers.parseEther("10")],
       );
     expect((await escrow.getAgreement(0)).status).to.equal(2);
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(0);
   });
 
   it("allows only the arbitrator to resolve a disputed remaining balance", async function () {
@@ -129,6 +138,7 @@ describe("LogisticsEscrow", function () {
     const agreement = await escrow.getAgreement(0);
     expect(agreement.status).to.equal(4);
     expect(agreement.remainingAmount).to.equal(0);
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(0);
   });
 
   it("rejects past final and milestone deadlines with specific errors", async function () {

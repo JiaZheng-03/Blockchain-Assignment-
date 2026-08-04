@@ -5,6 +5,8 @@ import { useWallet } from '../context/WalletContext';
 import { friendlyContractError, useContract } from '../context/ContractContext';
 import deployment from '../contracts/deployment.json';
 import { normalizeAgreement } from '../hooks/useAgreements';
+import { useProfile } from '../hooks/useProfile';
+import { buildAgreementIds, isArbitrationAgreement } from '../utils/arbitration';
 import {
   decodeEscrowEvent,
   findContractDeploymentBlock,
@@ -17,6 +19,7 @@ const eventDetails = {
   AgreementCreated: (args) => `${ethers.formatEther(args.amount)} ETH deposited into escrow`,
   MilestoneProofSubmitted: (args) => `Evidence submitted for milestone ${Number(args.milestoneIndex) + 1}`,
   MilestoneApproved: (args) => `${ethers.formatEther(args.payout)} ETH released for milestone ${Number(args.milestoneIndex) + 1}`,
+  CarrierReputationAwarded: (args) => `${args.points.toString()} reputation points awarded to the Carrier (${args.totalPoints.toString()} total)`,
   AgreementCompleted: () => 'All milestones paid and the agreement completed',
   Refunded: (args) => `${ethers.formatEther(args.amount)} ETH returned to the shipper`,
   DisputeOpened: (args) => `Dispute opened: ${args.reason}`,
@@ -25,6 +28,7 @@ const eventDetails = {
 
 function History() {
   const { account, isConnected } = useWallet();
+  const { isArbitrator } = useProfile();
   const {
     address,
     getReadContract,
@@ -51,7 +55,16 @@ function History() {
         setError('');
         setHistoryNotice('');
         const contract = await getReadContract();
-        const ids = await contract.getUserAgreementIds(account);
+        const candidateIds = isArbitrator
+          ? buildAgreementIds(await contract.agreementCount())
+          : await contract.getUserAgreementIds(account);
+        const candidateAgreements = await Promise.all(
+          candidateIds.map((id) => contract.getAgreement(id)),
+        );
+        const visibleRecords = candidateIds
+          .map((id, index) => ({ id, agreement: candidateAgreements[index] }))
+          .filter(({ agreement }) => !isArbitrator || isArbitrationAgreement(agreement));
+        const ids = visibleRecords.map(({ id }) => id);
         if (!ids.length) {
           if (!cancelled) {
             setAgreements([]);
@@ -60,9 +73,7 @@ function History() {
           return;
         }
 
-        const rawAgreements = await Promise.all(
-          ids.map((id) => contract.getAgreement(id)),
-        );
+        const rawAgreements = visibleRecords.map(({ agreement }) => agreement);
         const agreementSummaries = ids.map(
           (id, index) => normalizeAgreement(id, rawAgreements[index]),
         );
@@ -153,7 +164,7 @@ function History() {
     return () => {
       cancelled = true;
     };
-  }, [account, address, getReadContract, isConfigured, isConnected, refreshKey]);
+  }, [account, address, getReadContract, isArbitrator, isConfigured, isConnected, refreshKey]);
 
   const agreementHistory = groupAgreementHistory(agreements, events);
 
@@ -161,8 +172,12 @@ function History() {
     <div className="panel">
       <div className="section-heading">
         <div>
-          <h2>Agreement History</h2>
-          <p>Each agreement is grouped into one record. Open it to review milestones and details.</p>
+          <h2>{isArbitrator ? 'Dispute History' : 'Agreement History'}</h2>
+          <p>
+            {isArbitrator
+              ? 'Open a disputed case to resolve it, or review the final record of a resolved case.'
+              : 'Each agreement is grouped into one record. Open it to review milestones and details.'}
+          </p>
         </div>
         <span className="badge">{agreementHistory.length} agreements</span>
       </div>
@@ -207,7 +222,13 @@ function History() {
           ))}
         </div>
       ) : (
-        <p>{isConnected ? 'No agreements found for this wallet.' : 'Connect your wallet to view history.'}</p>
+        <p>
+          {isConnected
+            ? isArbitrator
+              ? 'No disputed or resolved agreements found.'
+              : 'No agreements found for this wallet.'
+            : 'Connect your wallet to view history.'}
+        </p>
       )}
     </div>
   );

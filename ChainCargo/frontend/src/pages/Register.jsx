@@ -24,7 +24,7 @@ function Register() {
     switchToExpectedNetwork,
     waitForTransaction,
   } = useContract();
-  const { isRegistered, profile, loading } = useProfile();
+  const { isArbitrator, isRegistered, profile, loading } = useProfile();
   const [name, setName] = useState('');
   const [role, setRole] = useState(requestedRole);
   const [busy, setBusy] = useState(false);
@@ -121,7 +121,19 @@ function Register() {
           </div>
         )}
 
-        {isRegistered ? (
+        {isArbitrator ? (
+          <>
+            <div className="notice success">
+              This wallet is the contract <strong>Arbitrator</strong>. It does not need participant registration.
+            </div>
+            <div className="next-actions">
+              <Link className="btn btn-primary" to="/dashboard">Open arbitration dashboard</Link>
+              <button className="btn btn-secondary" onClick={switchWallet} disabled={isConnecting}>
+                Switch to a participant wallet
+              </button>
+            </div>
+          </>
+        ) : isRegistered ? (
           <>
             <div className="notice success">
               This wallet is registered as <strong>{profile.roleLabel}</strong>: {profile.name}.

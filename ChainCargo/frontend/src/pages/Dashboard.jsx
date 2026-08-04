@@ -1,12 +1,35 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AgreementCard from '../components/AgreementCard';
+import DashboardInsights from '../components/DashboardInsights';
 import { useWallet } from '../context/WalletContext';
 import { useContract } from '../context/ContractContext';
 import { useProfile } from '../hooks/useProfile';
 import { useAgreements } from '../hooks/useAgreements';
+import { useCarrierReputation } from '../hooks/useCarrierReputation';
 import { useWalletBalance } from '../hooks/useWalletBalance';
+import {
+  AGREEMENT_FILTERS,
+  AGREEMENT_SORTS,
+  filterAndSortAgreements,
+} from '../utils/agreementFilters';
+import {
+  getAgreementActionDeadline,
+  getDeadlineState,
+  isRefundAvailable,
+} from '../utils/deadlineAlerts';
+
+const NOTIFICATION_PREFERENCE_KEY = 'chaincargoDeadlineNotifications';
+const NOTIFICATION_ALERT_PREFIX = 'chaincargoDeadlineAlert';
 
 function Dashboard() {
+  const [agreementQuery, setAgreementQuery] = useState('');
+  const [agreementStatus, setAgreementStatus] = useState('all');
+  const [agreementSort, setAgreementSort] = useState('newest');
+  const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState('default');
+  const [notificationMessage, setNotificationMessage] = useState('');
   const {
     account,
     authorizedAccountCount,
@@ -16,31 +39,137 @@ function Dashboard() {
     networkName,
     switchWallet,
   } = useWallet();
-  const { isConfigured } = useContract();
-  const { profile, isShipper, isCarrier } = useProfile();
-  const { agreements, loading: agreementsLoading, error: agreementsError } = useAgreements();
+  const { address: contractAddress, isConfigured } = useContract();
+  const { isArbitrator, isCarrier, isShipper, profile, roleLabel } = useProfile();
+  const carrierReputation = useCarrierReputation(isCarrier ? account : null);
+  const { agreements, loading: agreementsLoading, error: agreementsError } = useAgreements({
+    arbitration: isArbitrator,
+  });
   const { displayBalance, error: balanceError } = useWalletBalance();
 
   const stats = [
     { title: 'Account', value: profile?.name || (account ? formatAddress(account) : 'Not connected') },
     { title: 'Network', value: networkName },
     { title: 'Sepolia Balance', value: displayBalance },
-    { title: 'On-chain Role', value: profile?.roleLabel || 'Unregistered' },
+    { title: 'On-chain Role', value: roleLabel },
   ];
   const activeAgreements = agreements.filter((agreement) => agreement.status === 0).length;
-  const attentionAgreements = agreements.filter(
-    (agreement) => agreement.status === 0 || agreement.status === 3,
-  ).length;
+  const attentionAgreements = isArbitrator
+    ? agreements.filter((agreement) => agreement.status === 3).length
+    : agreements.filter(
+      (agreement) => agreement.status === 0 || agreement.status === 3,
+    ).length;
+  const visibleAgreements = useMemo(
+    () => filterAndSortAgreements(agreements, {
+      query: agreementQuery,
+      status: agreementStatus,
+      sort: agreementSort,
+      nowSeconds,
+    }),
+    [agreementQuery, agreementSort, agreementStatus, agreements, nowSeconds],
+  );
+  const hasAgreementFilters = agreementQuery || agreementStatus !== 'all' || agreementSort !== 'newest';
+
+  function clearAgreementFilters() {
+    setAgreementQuery('');
+    setAgreementStatus('all');
+    setAgreementSort('newest');
+  }
+
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setNowSeconds(Math.floor(Date.now() / 1000)),
+      1_000,
+    );
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!('Notification' in window)) return;
+    setNotificationPermission(window.Notification.permission);
+    setNotificationsEnabled(
+      window.Notification.permission === 'granted'
+      && window.localStorage.getItem(NOTIFICATION_PREFERENCE_KEY) === 'enabled',
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!notificationsEnabled || notificationPermission !== 'granted') return;
+
+    agreements.forEach((agreement) => {
+      if (agreement.status !== 0 || agreement.currentMilestoneState !== 0) return;
+      const actionDeadline = getAgreementActionDeadline(agreement);
+      const deadlineState = getDeadlineState(actionDeadline, nowSeconds);
+      if (!['warning', 'critical', 'overdue'].includes(deadlineState.level)) return;
+
+      const alertKey = [
+        NOTIFICATION_ALERT_PREFIX,
+        contractAddress,
+        account,
+        agreement.id,
+        actionDeadline,
+        deadlineState.level,
+      ].join(':');
+      if (window.localStorage.getItem(alertKey)) return;
+
+      const overdue = deadlineState.level === 'overdue';
+      const title = overdue
+        ? `Agreement #${agreement.id} missed its milestone deadline`
+        : `Agreement #${agreement.id} deadline approaching`;
+      const body = overdue
+        ? `${agreement.title}: ${deadlineState.countdown}. Remaining escrow can now be refunded to the Shipper.`
+        : `${agreement.title}: ${deadlineState.countdown} for ${agreement.currentMilestoneName || 'the current milestone'}.`;
+      try {
+        new window.Notification(title, { body, tag: alertKey });
+        window.localStorage.setItem(alertKey, 'sent');
+      } catch {
+        // The in-page countdown remains available if the browser suppresses a notification.
+      }
+    });
+  }, [account, agreements, contractAddress, notificationPermission, notificationsEnabled, nowSeconds]);
+
+  async function enableDeadlineNotifications() {
+    setNotificationMessage('');
+    if (!('Notification' in window)) {
+      setNotificationMessage('This browser does not support desktop notifications.');
+      return;
+    }
+
+    const permission = await window.Notification.requestPermission();
+    setNotificationPermission(permission);
+    if (permission === 'granted') {
+      window.localStorage.setItem(NOTIFICATION_PREFERENCE_KEY, 'enabled');
+      setNotificationsEnabled(true);
+      setNotificationMessage('Deadline notifications are enabled while ChainCargo is open.');
+      return;
+    }
+    setNotificationsEnabled(false);
+    setNotificationMessage('Notifications are blocked. Allow them in this site\'s browser settings to enable alerts.');
+  }
+
+  function disableDeadlineNotifications() {
+    window.localStorage.setItem(NOTIFICATION_PREFERENCE_KEY, 'disabled');
+    setNotificationsEnabled(false);
+    setNotificationMessage('Deadline notifications are disabled for ChainCargo.');
+  }
 
   return (
     <section>
-      {profile && (
-        <div className={`role-banner ${isShipper ? 'shipper-banner' : 'carrier-banner'}`}>
+      {(profile || isArbitrator) && (
+        <div className={`role-banner ${isArbitrator ? 'arbitrator-banner' : isShipper ? 'shipper-banner' : 'carrier-banner'}`}>
           <div>
-            <span className="eyebrow">Current role: {profile.roleLabel}</span>
-            <h2>{isShipper ? 'Create and fund shipments' : 'Complete assigned shipments'}</h2>
+            <span className="eyebrow">Current role: {roleLabel}</span>
+            <h2>
+              {isArbitrator
+                ? 'Review and resolve escrow disputes'
+                : isShipper
+                  ? 'Create and fund shipments'
+                  : 'Complete assigned shipments'}
+            </h2>
             <p>
-              {isShipper
+              {isArbitrator
+                ? 'The deployment wallet can divide the remaining escrow only after a Shipper or Carrier opens a dispute.'
+                : isShipper
                 ? 'Shippers create agreements, choose a registered carrier, and fund milestone escrow.'
                 : 'Carriers do not create or fund agreements. A shipper assigns your wallet; you then submit milestone evidence and receive approved payouts.'}
             </p>
@@ -51,8 +180,12 @@ function Dashboard() {
               {isConnecting
                 ? 'Choose account in MetaMask…'
                 : authorizedAccountCount > 1
-                  ? `Switch to ${isCarrier ? 'Shipper' : 'Carrier'} wallet`
-                  : `Add your ${isCarrier ? 'Shipper' : 'Carrier'} wallet`}
+                  ? isArbitrator
+                    ? 'Switch to participant wallet'
+                    : `Switch to ${isCarrier ? 'Shipper' : 'Carrier'} wallet`
+                  : isArbitrator
+                    ? 'Add a participant wallet'
+                    : `Add your ${isCarrier ? 'Shipper' : 'Carrier'} wallet`}
             </button>
             {authorizedAccountCount < 2 && (
               <small className="wallet-permission-hint">
@@ -71,13 +204,27 @@ function Dashboard() {
         ))}
       </div>
 
-      {profile && (
+      {!agreementsLoading && agreements.length > 0 && (
+        <DashboardInsights
+          agreements={agreements}
+          carrierReputation={carrierReputation}
+          isArbitrator={isArbitrator}
+          isCarrier={isCarrier}
+          nowSeconds={nowSeconds}
+        />
+      )}
+
+      {(profile || isArbitrator) && (
         <div className="panel workflow-panel">
           <div className="section-heading">
             <div>
               <span className="eyebrow">Your next step</span>
               <h3>
-                {isShipper
+                {isArbitrator
+                  ? attentionAgreements
+                    ? 'Resolve the disputed agreements awaiting arbitration'
+                    : 'No disputes currently require a decision'
+                  : isShipper
                   ? activeAgreements
                     ? 'Review active agreements or create the next shipment'
                     : 'Create and fund your first logistics agreement'
@@ -89,7 +236,9 @@ function Dashboard() {
             <span className="badge">{attentionAgreements} need attention</span>
           </div>
           <p>
-            {isShipper
+            {isArbitrator
+              ? 'Open a disputed agreement, review its evidence and reason, then choose the Shipper share. The Carrier receives the remainder automatically.'
+              : isShipper
               ? 'After funding, switch to the Carrier wallet to submit evidence. Switch back here to verify the evidence and release payment.'
               : 'Submit evidence before the milestone due date. The Shipper reviews it and releases the on-chain payout.'}
           </p>
@@ -100,41 +249,146 @@ function Dashboard() {
         </div>
       )}
 
+      {!isArbitrator && isConnected && agreements.length > 0 && (
+        <div className="panel notification-panel">
+          <div>
+            <span className="eyebrow">Deadline alerts</span>
+            <h3>{notificationsEnabled ? 'Browser notifications enabled' : 'Enable browser notifications'}</h3>
+            <p>
+              Receive one alert when a pending milestone reaches 24 hours, 1 hour, or becomes overdue.
+              Notifications work while ChainCargo is open in your browser.
+            </p>
+            {notificationMessage && <small>{notificationMessage}</small>}
+            {notificationPermission === 'denied' && !notificationMessage && (
+              <small>Notifications are blocked. Allow them in this site&apos;s browser settings.</small>
+            )}
+          </div>
+          {'Notification' in window ? (
+            notificationsEnabled ? (
+              <button className="btn btn-secondary" type="button" onClick={disableDeadlineNotifications}>
+                Disable notifications
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={enableDeadlineNotifications}
+                disabled={notificationPermission === 'denied'}
+              >
+                Enable notifications
+              </button>
+            )
+          ) : (
+            <span className="badge">Not supported</span>
+          )}
+        </div>
+      )}
+
       <div className="panel">
         <div className="section-heading">
-          <h3>Your Agreements</h3>
+          <h3>{isArbitrator ? 'Arbitration Cases' : 'Your Agreements'}</h3>
           <span className="badge">{agreements.length} total</span>
         </div>
+        {isConnected && agreements.length > 0 && (
+          <div className="agreement-controls" aria-label="Agreement search and filters">
+            <label className="agreement-search">
+              <span>Search agreements</span>
+              <input
+                type="search"
+                value={agreementQuery}
+                onChange={(event) => setAgreementQuery(event.target.value)}
+                placeholder="Title, ID, shipper or carrier address"
+              />
+            </label>
+            <label>
+              <span>Status</span>
+              <select
+                value={agreementStatus}
+                onChange={(event) => setAgreementStatus(event.target.value)}
+              >
+                {AGREEMENT_FILTERS.map((filter) => (
+                  <option key={filter.value} value={filter.value}>{filter.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Sort by</span>
+              <select
+                value={agreementSort}
+                onChange={(event) => setAgreementSort(event.target.value)}
+              >
+                {AGREEMENT_SORTS.map((sortOption) => (
+                  <option key={sortOption.value} value={sortOption.value}>{sortOption.label}</option>
+                ))}
+              </select>
+            </label>
+            <div className="agreement-control-summary">
+              <span>{visibleAgreements.length} of {agreements.length} shown</span>
+              {hasAgreementFilters && (
+                <button className="text-button" type="button" onClick={clearAgreementFilters}>
+                  Clear filters
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         {!isConfigured && <div className="notice error">No contract deployment is configured.</div>}
         {balanceError && <div className="notice error">{balanceError}</div>}
         {agreementsError && <div className="notice error">{agreementsError}</div>}
-        {agreementsLoading ? <p>Loading on-chain agreements…</p> : isConnected && agreements.length ? (
+        {agreementsLoading ? <p>Loading on-chain agreements…</p> : isConnected && agreements.length && visibleAgreements.length ? (
           <div className="grid grid-2">
-            {agreements.map((agreement) => (
-              <AgreementCard
-                key={agreement.id}
-                title={agreement.title}
-                amount={`${agreement.totalEth} ETH`}
-                remaining={`${agreement.remainingEth} ETH`}
-                status={agreement.statusLabel}
-                link={`/agreement/${agreement.id}`}
-                actionLabel={
-                  agreement.status === 0
-                    ? isShipper
-                      ? 'Review / release payout'
-                      : 'Open current milestone'
-                    : agreement.status === 3
-                      ? 'Review dispute'
-                      : 'View final record'
-                }
-              />
-            ))}
+            {visibleAgreements.map((agreement) => {
+              const actionDeadline = getAgreementActionDeadline(agreement);
+              const deadlineState = getDeadlineState(
+                actionDeadline,
+                nowSeconds,
+                agreement.status === 0,
+              );
+              const pendingMilestone = agreement.status === 0 && agreement.currentMilestoneState === 0;
+              return (
+                <AgreementCard
+                  key={agreement.id}
+                  agreementId={agreement.id}
+                  title={agreement.title}
+                  amount={`${agreement.totalEth} ETH`}
+                  remaining={`${agreement.remainingEth} ETH`}
+                  deadline={new Date(actionDeadline * 1000).toLocaleString()}
+                  deadlineLabel={pendingMilestone ? 'Current milestone deadline' : 'Final deadline'}
+                  deadlineState={deadlineState}
+                  refundAvailable={isRefundAvailable(agreement, nowSeconds)}
+                  status={agreement.statusLabel}
+                  link={`/agreement/${agreement.id}`}
+                  actionLabel={
+                    isArbitrator
+                      ? agreement.status === 3
+                        ? 'Resolve dispute'
+                        : 'View resolution record'
+                      : agreement.status === 0
+                      ? isShipper
+                        ? 'Review / release payout'
+                        : 'Open current milestone'
+                      : agreement.status === 3
+                        ? 'Review dispute'
+                        : 'View final record'
+                  }
+                />
+              );
+            })}
+          </div>
+        ) : isConnected && agreements.length ? (
+          <div className="empty-state filtered-empty-state">
+            <p>No agreements match the current search and filters.</p>
+            <button className="btn btn-secondary" type="button" onClick={clearAgreementFilters}>
+              Clear filters
+            </button>
           </div>
         ) : (
           <div className="empty-state">
             <p>
               {isConnected
-                ? isShipper
+                ? isArbitrator
+                  ? 'No disputed or resolved agreements exist on this deployment yet.'
+                  : isShipper
                   ? 'No agreements yet. Create one to lock ETH into milestone escrow.'
                   : 'No agreements are assigned to this Carrier wallet yet.'
                 : 'Connect your wallet to load agreements.'}

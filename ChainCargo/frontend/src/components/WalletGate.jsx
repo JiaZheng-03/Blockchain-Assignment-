@@ -14,7 +14,7 @@ function WalletGate() {
     isCorrectNetwork,
     switchToExpectedNetwork,
   } = useContract();
-  const { isRegistered, loading } = useProfile();
+  const { hasAppAccess, loading } = useProfile();
 
   if (!isConnected) {
     return (
@@ -61,7 +61,7 @@ function WalletGate() {
     return <div className="panel access-panel">Checking your on-chain registration…</div>;
   }
 
-  if (!isRegistered) {
+  if (!hasAppAccess) {
     return (
       <div className="panel access-panel">
         <span className="eyebrow">Registration required</span>

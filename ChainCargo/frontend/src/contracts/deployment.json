@@ -1,7 +1,7 @@
 {
-  "address": "0xd1D02268d88fEddFF7e8f0deAb067BF1F2872024",
+  "address": "0xD9e8fEC538be2cc7F8BF3BeF506BD4093a76C1BC",
   "chainId": 11155111,
-  "deploymentBlock": 11353928,
+  "deploymentBlock": 11418767,
   "abi": [
     {
       "inputs": [],
@@ -247,6 +247,43 @@
       "inputs": [
         {
           "indexed": true,
+          "internalType": "address",
+          "name": "carrier",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "points",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "totalPoints",
+          "type": "uint256"
+        }
+      ],
+      "name": "CarrierReputationAwarded",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
           "internalType": "uint256",
           "name": "agreementId",
           "type": "uint256"
@@ -413,6 +450,19 @@
     },
     {
       "inputs": [],
+      "name": "REPUTATION_POINTS_PER_MILESTONE",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "agreementCount",
       "outputs": [
         {
@@ -469,6 +519,25 @@
           "internalType": "bool",
           "name": "",
           "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "carrierReputation",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",

@@ -6,13 +6,15 @@ import { useProfile } from '../hooks/useProfile';
 function Home() {
   const { isConnected } = useWallet();
   const { deploymentStatus, isCorrectNetwork } = useContract();
-  const { isRegistered, isShipper } = useProfile();
+  const { hasAppAccess, isArbitrator, isShipper } = useProfile();
   const primaryAction = !isConnected
     ? { to: '/setup', label: 'Connect MetaMask' }
     : !isCorrectNetwork || deploymentStatus !== 'ready'
       ? { to: '/setup', label: 'Finish Local Setup' }
-    : !isRegistered
+    : !hasAppAccess
       ? { to: '/register', label: 'Register This Wallet' }
+      : isArbitrator
+        ? { to: '/dashboard', label: 'Open Arbitration Dashboard' }
       : isShipper
         ? { to: '/create-agreement', label: 'Create Agreement' }
         : { to: '/dashboard', label: 'View Assigned Agreements' };
