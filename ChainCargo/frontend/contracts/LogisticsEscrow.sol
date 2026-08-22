@@ -79,10 +79,20 @@ contract LogisticsEscrow {
     error MilestoneDeadlineNotSequential(uint256 milestoneIndex);
     error MilestoneDeadlineAfterAgreement(uint256 milestoneIndex);
     error PayoutTotalMismatch(uint256 payoutTotal, uint256 depositedAmount);
+    error InputTooLong(uint256 providedLength, uint256 maximumLength);
+    error InvalidProofURI();
+    error DeadlineRefundAvailable();
 
     address public immutable arbitrator;
     uint256 public constant MAX_MILESTONES = 20;
     uint256 public constant REPUTATION_POINTS_PER_MILESTONE = 10;
+    uint256 public constant MAX_PROFILE_NAME_LENGTH = 100;
+    uint256 public constant MAX_AGREEMENT_TITLE_LENGTH = 200;
+    uint256 public constant MAX_AGREEMENT_NOTES_LENGTH = 2_000;
+    uint256 public constant MAX_MILESTONE_NAME_LENGTH = 120;
+    uint256 public constant MAX_MILESTONE_DETAILS_LENGTH = 1_000;
+    uint256 public constant MAX_PROOF_URI_LENGTH = 200;
+    uint256 public constant MAX_DISPUTE_REASON_LENGTH = 1_000;
     uint256 public agreementCount;
 
     mapping(address => UserProfile) private profiles;
@@ -148,6 +158,7 @@ contract LogisticsEscrow {
     function register(string calldata name, Role role) external {
         if (profiles[msg.sender].role != Role.None) revert AlreadyRegistered();
         if (bytes(name).length == 0) revert InvalidInput();
+        _requireMaximumLength(name, MAX_PROFILE_NAME_LENGTH);
         if (role != Role.Shipper && role != Role.Carrier) revert InvalidRole();
 
         profiles[msg.sender] = UserProfile(name, role, uint64(block.timestamp));
@@ -178,6 +189,8 @@ contract LogisticsEscrow {
         if (profiles[carrier].role != Role.Carrier) revert InvalidCarrier(carrier);
         if (carrier == msg.sender) revert SameParticipant();
         if (bytes(title).length == 0) revert EmptyTitle();
+        _requireMaximumLength(title, MAX_AGREEMENT_TITLE_LENGTH);
+        _requireMaximumLength(notes, MAX_AGREEMENT_NOTES_LENGTH);
         if (msg.value == 0) revert ZeroFunding();
         if (deadline <= block.timestamp) {
             revert InvalidDeadline(deadline, uint64(block.timestamp));
@@ -195,6 +208,8 @@ contract LogisticsEscrow {
         uint64 previousDueDate = uint64(block.timestamp);
         for (uint256 i; i < payouts.length; ++i) {
             if (bytes(milestoneNames[i]).length == 0) revert EmptyMilestoneName(i);
+            _requireMaximumLength(milestoneNames[i], MAX_MILESTONE_NAME_LENGTH);
+            _requireMaximumLength(milestoneDetails[i], MAX_MILESTONE_DETAILS_LENGTH);
             if (payouts[i] == 0) revert ZeroMilestonePayout(i);
             if (dueDates[i] <= previousDueDate) {
                 revert MilestoneDeadlineNotSequential(i);
@@ -258,6 +273,7 @@ contract LogisticsEscrow {
             block.timestamp > milestone.dueAt ||
             proofHash == bytes32(0)
         ) revert InvalidMilestone();
+        if (!_isValidProofURI(proofURI)) revert InvalidProofURI();
 
         milestone.proofHash = proofHash;
         milestone.proofURI = proofURI;
@@ -331,6 +347,12 @@ contract LogisticsEscrow {
         }
         if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
         if (bytes(reason).length == 0) revert InvalidInput();
+        _requireMaximumLength(reason, MAX_DISPUTE_REASON_LENGTH);
+
+        Milestone storage current = milestones[agreementId][agreement.nextMilestone];
+        if (current.state == MilestoneState.Pending && block.timestamp > current.dueAt) {
+            revert DeadlineRefundAvailable();
+        }
 
         agreement.status = AgreementStatus.Disputed;
         emit DisputeOpened(agreementId, msg.sender, reason);
@@ -382,6 +404,26 @@ contract LogisticsEscrow {
     function _sendValue(address recipient, uint256 amount) private {
         (bool success, ) = payable(recipient).call{value: amount}("");
         if (!success) revert TransferFailed();
+    }
+
+    function _requireMaximumLength(string calldata value, uint256 maximumLength) private pure {
+        uint256 length = bytes(value).length;
+        if (length > maximumLength) revert InputTooLong(length, maximumLength);
+    }
+
+    /// @dev Keep on-chain validation cheap: require the workflow scheme, a non-empty CID,
+    /// and a bounded URI. CID syntax is validated more strictly before the frontend fetches it.
+    function _isValidProofURI(string calldata proofURI) private pure returns (bool) {
+        bytes calldata value = bytes(proofURI);
+        if (value.length <= 7 || value.length > MAX_PROOF_URI_LENGTH) return false;
+        return
+            value[0] == "i" &&
+            value[1] == "p" &&
+            value[2] == "f" &&
+            value[3] == "s" &&
+            value[4] == ":" &&
+            value[5] == "/" &&
+            value[6] == "/";
     }
 
     receive() external payable {

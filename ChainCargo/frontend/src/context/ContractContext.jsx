@@ -1,23 +1,22 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ethers } from 'ethers';
-import deployment from '../contracts/deployment.json';
+import sepoliaDeployment from '../contracts/deployment.json';
+import localDeployment from '../contracts/deployment.local.json';
 import { ESCROW_ABI } from '../contracts/abi';
 import {
+  HARDHAT_LOCAL_NETWORK,
   SEPOLIA_NETWORK,
   switchWalletNetwork,
 } from '../utils/walletNetwork';
+import {
+  resolveContractAddress,
+  selectDeploymentForChain,
+} from '../utils/deploymentConfig';
 import { useWallet } from './WalletContext';
 export { friendlyContractError } from '../utils/contractErrors';
 
 const ContractContext = createContext(null);
 const DEFAULT_CHAIN_ID = SEPOLIA_NETWORK.chainId;
-
-function getContractAddress(expectedChainId) {
-  const override = import.meta.env.VITE_ESCROW_CONTRACT_ADDRESS;
-  const candidate = override ||
-    (Number(deployment.chainId) === expectedChainId ? deployment.address : '');
-  return candidate === ethers.ZeroAddress ? '' : candidate;
-}
 
 export function ContractProvider({ children }) {
   const { account, chainId, isConnected } = useWallet();
@@ -25,8 +24,16 @@ export function ContractProvider({ children }) {
   const [deploymentStatus, setDeploymentStatus] = useState('checking');
   const [deploymentError, setDeploymentError] = useState('');
   const expectedChainId = Number(import.meta.env.VITE_ESCROW_CHAIN_ID || DEFAULT_CHAIN_ID);
-  const address = getContractAddress(expectedChainId);
-  const isConfigured = ethers.isAddress(address || '') && address !== ethers.ZeroAddress;
+  const deployment = selectDeploymentForChain(
+    expectedChainId,
+    sepoliaDeployment,
+    localDeployment,
+  );
+  const address = resolveContractAddress({
+    deployment,
+    overrideAddress: import.meta.env.VITE_ESCROW_CONTRACT_ADDRESS,
+  });
+  const isConfigured = Boolean(address);
   const currentChainId = chainId ? Number.parseInt(chainId, 16) : 0;
   const isCorrectNetwork = !expectedChainId || currentChainId === expectedChainId;
 
@@ -71,14 +78,16 @@ export function ContractProvider({ children }) {
     if (!expectedChainId) throw new Error('No target chain is configured.');
     const network = expectedChainId === SEPOLIA_NETWORK.chainId
       ? SEPOLIA_NETWORK
-      : null;
+      : expectedChainId === HARDHAT_LOCAL_NETWORK.chainId
+        ? HARDHAT_LOCAL_NETWORK
+        : null;
     await switchWalletNetwork(window.ethereum, expectedChainId, network);
     setRefreshKey((current) => current + 1);
   }, [expectedChainId]);
 
   const getReadContract = useCallback(async () => {
     if (!isConfigured) {
-      throw new Error('The Sepolia contract is not deployed. Run npm run deploy:sepolia first.');
+      throw new Error(`The escrow contract is not configured for chain ${expectedChainId}.`);
     }
     if (typeof window === 'undefined' || !window.ethereum) {
       throw new Error('MetaMask is required to access the blockchain.');
@@ -92,7 +101,7 @@ export function ContractProvider({ children }) {
     }
     if ((await provider.getCode(address)) === '0x') {
       throw new Error(
-        'No escrow contract exists at the configured Sepolia address. Deploy it again.',
+        `No escrow contract exists at the configured address on chain ${expectedChainId}.`,
       );
     }
     return new ethers.Contract(address, ESCROW_ABI, provider);
@@ -114,6 +123,7 @@ export function ContractProvider({ children }) {
   const value = useMemo(
     () => ({
       address,
+      deployment,
       expectedChainId,
       isCorrectNetwork,
       isConfigured,
@@ -129,6 +139,7 @@ export function ContractProvider({ children }) {
     [
       address,
       checkDeployment,
+      deployment,
       deploymentError,
       deploymentStatus,
       expectedChainId,

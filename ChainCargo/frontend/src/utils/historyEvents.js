@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import { deploymentMatchesContract } from './deploymentConfig.js';
 
 export const HISTORY_BLOCK_CHUNK_SIZE = 5_000;
 
@@ -16,8 +17,13 @@ export function decodeEscrowEvent(contractInterface, log) {
   }
 }
 
-export async function findContractDeploymentBlock(provider, address, latestBlock) {
-  const cacheKey = address.toLowerCase();
+export async function findContractDeploymentBlock(
+  provider,
+  address,
+  latestBlock,
+  cacheNamespace = '',
+) {
+  const cacheKey = `${cacheNamespace}:${address.toLowerCase()}`;
   if (deploymentBlockCache.has(cacheKey)) return deploymentBlockCache.get(cacheKey);
   if ((await provider.getCode(address, latestBlock)) === '0x') {
     throw new Error('The configured contract has no code on Sepolia.');
@@ -36,6 +42,23 @@ export async function findContractDeploymentBlock(provider, address, latestBlock
 
   deploymentBlockCache.set(cacheKey, low);
   return low;
+}
+
+export async function selectHistoryStartBlock({
+  provider,
+  address,
+  chainId,
+  deployment,
+  latestBlock,
+}) {
+  const savedBlock = Number(deployment?.deploymentBlock || 0);
+  if (
+    savedBlock > 0 &&
+    deploymentMatchesContract({ address, chainId, deployment })
+  ) {
+    return savedBlock;
+  }
+  return findContractDeploymentBlock(provider, address, latestBlock, String(chainId));
 }
 
 export async function loadContractLogsInChunks({

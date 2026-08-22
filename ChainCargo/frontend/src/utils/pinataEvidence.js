@@ -53,16 +53,25 @@ export function normalizeGatewayBaseUrl(gateway) {
   return withProtocol.replace(/\/+$/, '').replace(/\/ipfs$/i, '');
 }
 
+export function isValidIpfsCid(cid) {
+  const value = String(cid || '').trim();
+  const cidV0 = /^Qm[1-9A-HJ-NP-Za-km-z]{44}$/;
+  const cidV1Base32 = /^b[a-z2-7]{20,127}$/;
+  const cidV1Base58 = /^z[1-9A-HJ-NP-Za-km-z]{20,127}$/;
+  return cidV0.test(value) || cidV1Base32.test(value) || cidV1Base58.test(value);
+}
+
 export function ipfsUriToCid(uri) {
   const value = String(uri || '').trim();
-  if (!value.toLowerCase().startsWith('ipfs://')) return '';
-  return value.slice(7).split(/[/?#]/, 1)[0];
+  if (!value.startsWith('ipfs://')) return '';
+  const cid = value.slice(7);
+  return isValidIpfsCid(cid) ? cid : '';
 }
 
 export function getEvidenceGatewayUrl(uri, gateway) {
   const cid = ipfsUriToCid(uri);
   if (cid) return `${normalizeGatewayBaseUrl(gateway)}/ipfs/${cid}`;
-  return /^https:\/\//i.test(uri || '') ? uri : '';
+  return '';
 }
 
 export function hashEvidenceBytes(bytes) {
@@ -140,7 +149,9 @@ export async function uploadEvidenceToPinata({
   }
   const payload = await uploadResponse.json();
   const upload = payload.data || payload;
-  if (!upload?.cid) throw new Error('Pinata uploaded the file without returning an IPFS CID.');
+  if (!isValidIpfsCid(upload?.cid)) {
+    throw new Error('Pinata uploaded the file without returning a valid IPFS CID.');
+  }
 
   const proofURI = `ipfs://${upload.cid}`;
   return {
@@ -153,7 +164,11 @@ export async function uploadEvidenceToPinata({
 }
 
 export async function verifyEvidenceFromGateway({ expectedHash, gatewayUrl }) {
-  if (!gatewayUrl) throw new Error('This evidence does not have a valid IPFS or HTTPS location.');
+  if (!gatewayUrl) {
+    throw new Error(
+      'This evidence is not a valid ChainCargo IPFS URI. Legacy or external URLs cannot be verified automatically.',
+    );
+  }
   const response = await fetch(gatewayUrl, { cache: 'no-store' });
   if (!response.ok) throw new Error('The evidence file could not be downloaded from IPFS.');
   const actualHash = hashEvidenceBytes(await response.arrayBuffer());

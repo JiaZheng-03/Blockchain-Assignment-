@@ -36,7 +36,7 @@ async function main() {
   if (!deployer) throw new Error("No deployer signer is configured.");
   const deployerBalance = await hre.ethers.provider.getBalance(deployer.address);
   if (deployerBalance === 0n) {
-    throw new Error("The deployer wallet has no Sepolia ETH for contract deployment gas.");
+    throw new Error(`The deployer wallet has no funds for ${hre.network.name} deployment gas.`);
   }
 
   const Escrow = await hre.ethers.getContractFactory("LogisticsEscrow");
@@ -53,14 +53,15 @@ async function main() {
     abi: artifact.abi,
   };
 
-  const target = path.join(__dirname, "..", "src", "contracts", "deployment.json");
+  const deploymentFile = isSepolia ? "deployment.json" : "deployment.local.json";
+  const target = path.join(__dirname, "..", "src", "contracts", deploymentFile);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, `${JSON.stringify(output, null, 2)}\n`);
 
   console.log(`LogisticsEscrow deployed by ${deployer.address}`);
   console.log(`Contract address: ${address}`);
   if (isSepolia) console.log(`Explorer: https://sepolia.etherscan.io/address/${address}`);
-  console.log(`Frontend deployment written to ${target}`);
+  console.log(`${isSepolia ? "Sepolia" : "Local"} deployment written to ${target}`);
 }
 
 main().catch((error) => {

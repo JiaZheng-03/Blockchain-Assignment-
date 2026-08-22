@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently --kill-others --names API,VITE \"npm run dev:api\" \"npm run dev:ui\"",
+    "dev:local": "concurrently --kill-others --names API,VITE \"node --env-file=.env.hardhat server.js\" \"vite --mode hardhat\"",
     "dev:api": "node server.js",
     "dev:ui": "vite",
     "build": "vite build",

@@ -94,6 +94,44 @@ describe("LogisticsEscrow", function () {
     expect(agreement.remainingAmount).to.equal(payouts[1]);
     expect(agreement.nextMilestone).to.equal(1);
     expect(await escrow.carrierReputation(carrier.address)).to.equal(10);
+
+    await expect(escrow.connect(shipper).approveMilestone(0, 0))
+      .to.be.revertedWithCustomError(escrow, "InvalidMilestone");
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(10);
+  });
+
+  it("rejects empty and malformed proof URIs without changing milestone state", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    const proof = ethers.keccak256(ethers.toUtf8Bytes("evidence bytes"));
+
+    await expect(escrow.connect(carrier).submitMilestoneProof(0, 0, proof, ""))
+      .to.be.revertedWithCustomError(escrow, "InvalidProofURI");
+    await expect(
+      escrow.connect(carrier).submitMilestoneProof(0, 0, proof, "https://attacker.example/evidence"),
+    ).to.be.revertedWithCustomError(escrow, "InvalidProofURI");
+
+    const [milestone] = await escrow.getMilestones(0);
+    expect(milestone.state).to.equal(0);
+    expect(milestone.proofHash).to.equal(ethers.ZeroHash);
+    expect(milestone.proofURI).to.equal("");
+  });
+
+  it("accepts a bounded IPFS proof URI and stores the exact file hash", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    const proof = ethers.keccak256(ethers.toUtf8Bytes("original file bytes"));
+    const proofURI = `ipfs://b${"a".repeat(58)}`;
+
+    await expect(escrow.connect(carrier).submitMilestoneProof(0, 0, proof, proofURI))
+      .to.emit(escrow, "MilestoneProofSubmitted")
+      .withArgs(0, 0, proof, proofURI);
+
+    const [milestone] = await escrow.getMilestones(0);
+    expect(milestone.state).to.equal(1);
+    expect(milestone.proofHash).to.equal(proof);
+    expect(milestone.proofURI).to.equal(proofURI);
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(0);
   });
 
   it("completes after the final verified milestone", async function () {
@@ -124,6 +162,31 @@ describe("LogisticsEscrow", function () {
       );
     expect((await escrow.getAgreement(0)).status).to.equal(2);
     expect(await escrow.carrierReputation(carrier.address)).to.equal(0);
+
+    await expect(escrow.claimRefundAfterDeadline(0))
+      .to.be.revertedWithCustomError(escrow, "InvalidStatus");
+  });
+
+  it("prevents a dispute from blocking an already-eligible deadline refund", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    const { now } = await createAgreement(escrow, shipper, carrier);
+    await time.increaseTo(now + 1801);
+
+    expect(await escrow.canRefund(0)).to.equal(true);
+    await expect(escrow.connect(carrier).openDispute(0, "Delay disputed"))
+      .to.be.revertedWithCustomError(escrow, "DeadlineRefundAvailable");
+    expect((await escrow.getAgreement(0)).status).to.equal(0);
+    expect(await escrow.canRefund(0)).to.equal(true);
+  });
+
+  it("allows participant disputes before missed-deadline refund eligibility", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+
+    await expect(escrow.connect(carrier).openDispute(0, "Cargo condition disputed"))
+      .to.emit(escrow, "DisputeOpened")
+      .withArgs(0, carrier.address, "Cargo condition disputed");
+    expect((await escrow.getAgreement(0)).status).to.equal(3);
   });
 
   it("allows only the arbitrator to resolve a disputed remaining balance", async function () {
@@ -133,12 +196,100 @@ describe("LogisticsEscrow", function () {
 
     await expect(escrow.connect(outsider).resolveDispute(0, 1))
       .to.be.revertedWithCustomError(escrow, "Unauthorized");
-    await escrow.connect(arbitrator).resolveDispute(0, ethers.parseEther("4"));
+    const resolution = escrow.connect(arbitrator).resolveDispute(0, ethers.parseEther("4"));
+    await expect(resolution).to.changeEtherBalances(
+      [escrow, shipper, carrier],
+      [
+        -ethers.parseEther("10"),
+        ethers.parseEther("4"),
+        ethers.parseEther("6"),
+      ],
+    );
 
     const agreement = await escrow.getAgreement(0);
     expect(agreement.status).to.equal(4);
     expect(agreement.remainingAmount).to.equal(0);
     expect(await escrow.carrierReputation(carrier.address)).to.equal(0);
+  });
+
+  it("rejects unauthorized agreement actions and invalid agreement IDs", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    const proof = ethers.keccak256(ethers.toUtf8Bytes("evidence"));
+
+    await expect(
+      escrow.connect(outsider).submitMilestoneProof(0, 0, proof, "ipfs://evidence"),
+    ).to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(outsider).approveMilestone(0, 0))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(outsider).openDispute(0, "Not a participant"))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.getAgreement(99))
+      .to.be.revertedWithCustomError(escrow, "AgreementNotFound")
+      .withArgs(99);
+    await expect(escrow.connect(carrier).submitMilestoneProof(99, 0, proof, "ipfs://evidence"))
+      .to.be.revertedWithCustomError(escrow, "AgreementNotFound")
+      .withArgs(99);
+  });
+
+  it("bounds user-controlled strings while accepting useful boundary values", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    await expect(escrow.connect(outsider).register("x".repeat(100), 2))
+      .to.emit(escrow, "UserRegistered");
+
+    const signers = await ethers.getSigners();
+    await expect(escrow.connect(signers[4]).register("x".repeat(101), 1))
+      .to.be.revertedWithCustomError(escrow, "InputTooLong")
+      .withArgs(101, 100);
+
+    const now = await time.latest();
+    await expect(
+      escrow.connect(shipper).createAgreement(
+        "x".repeat(201),
+        carrier.address,
+        now + 3600,
+        "",
+        ["Pickup"],
+        ["Collect"],
+        [ethers.parseEther("1")],
+        [now + 1800],
+        { value: ethers.parseEther("1") },
+      ),
+    ).to.be.revertedWithCustomError(escrow, "InputTooLong")
+      .withArgs(201, 200);
+
+    await expect(
+      escrow.connect(shipper).createAgreement(
+        "Valid",
+        carrier.address,
+        now + 3600,
+        "",
+        ["Pickup"],
+        ["x".repeat(1001)],
+        [ethers.parseEther("1")],
+        [now + 1800],
+        { value: ethers.parseEther("1") },
+      ),
+    ).to.be.revertedWithCustomError(escrow, "InputTooLong")
+      .withArgs(1001, 1000);
+  });
+
+  it("bounds proof URIs and dispute reasons", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    const proof = ethers.keccak256(ethers.toUtf8Bytes("evidence"));
+    const tooLongURI = `ipfs://${"a".repeat(194)}`;
+
+    await expect(escrow.connect(carrier).submitMilestoneProof(0, 0, proof, tooLongURI))
+      .to.be.revertedWithCustomError(escrow, "InvalidProofURI");
+    await expect(escrow.connect(shipper).openDispute(0, "x".repeat(1001)))
+      .to.be.revertedWithCustomError(escrow, "InputTooLong")
+      .withArgs(1001, 1000);
+
+    const maximumURI = `ipfs://${"a".repeat(193)}`;
+    await expect(escrow.connect(carrier).submitMilestoneProof(0, 0, proof, maximumURI))
+      .to.emit(escrow, "MilestoneProofSubmitted");
+    expect((await escrow.getMilestones(0))[0].proofURI).to.equal(maximumURI);
   });
 
   it("rejects past final and milestone deadlines with specific errors", async function () {

@@ -14,7 +14,12 @@ import {
   validateEvidenceFileMetadata,
   verifyEvidenceFromGateway,
 } from '../utils/pinataEvidence';
-import { getDeadlineState } from '../utils/deadlineAlerts';
+import { getDeadlineState, isRefundButtonAvailable } from '../utils/deadlineAlerts';
+import {
+  decodeEscrowEvent,
+  loadContractLogsInChunks,
+  selectHistoryStartBlock,
+} from '../utils/historyEvents';
 
 const shortAddress = (address) => `${address.slice(0, 6)}…${address.slice(-4)}`;
 const formatDate = (timestamp) => new Date(timestamp * 1000).toLocaleString();
@@ -22,7 +27,7 @@ const formatDate = (timestamp) => new Date(timestamp * 1000).toLocaleString();
 function AgreementDetail() {
   const { id } = useParams();
   const { account } = useWallet();
-  const { address, getReadContract, getWriteContract, isConfigured, refreshKey, waitForTransaction } =
+  const { address, deployment, getReadContract, getWriteContract, isConfigured, refreshKey, waitForTransaction } =
     useContract();
   const evidenceFileInputRef = useRef(null);
   const [agreement, setAgreement] = useState(null);
@@ -30,11 +35,14 @@ function AgreementDetail() {
   const [canRefund, setCanRefund] = useState(false);
   const [evidenceFile, setEvidenceFile] = useState(null);
   const [gatewayBaseUrl, setGatewayBaseUrl] = useState(normalizeGatewayBaseUrl(''));
+  const [pinataConfigured, setPinataConfigured] = useState(null);
   const [uploadStatus, setUploadStatus] = useState('');
   const [verification, setVerification] = useState(null);
   const [disputeReason, setDisputeReason] = useState('');
   const [resolutionEth, setResolutionEth] = useState('');
   const [arbitrator, setArbitrator] = useState('');
+  const [disputeInfo, setDisputeInfo] = useState(null);
+  const [disputeLookupError, setDisputeLookupError] = useState('');
   const [busyAction, setBusyAction] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -75,12 +83,52 @@ function AgreementDetail() {
       );
       setCanRefund(refundable);
       setArbitrator(arbitratorAddress);
+      setDisputeInfo(null);
+      setDisputeLookupError('');
+      if (Number(rawAgreement.status) === 3) {
+        try {
+          const provider = contract.runner;
+          const latestBlock = await provider.getBlockNumber();
+          const network = await provider.getNetwork();
+          const fromBlock = await selectHistoryStartBlock({
+            provider,
+            address,
+            chainId: Number(network.chainId),
+            deployment,
+            latestBlock,
+          });
+          const filter = contract.filters.DisputeOpened(id);
+          const logs = await loadContractLogsInChunks({
+            provider,
+            address,
+            fromBlock,
+            toBlock: latestBlock,
+            topics: await filter.getTopicFilter(),
+          });
+          const opened = logs
+            .map((log) => decodeEscrowEvent(contract.interface, log))
+            .filter((event) => event?.name === 'DisputeOpened')
+            .at(-1);
+          if (opened) {
+            setDisputeInfo({
+              openedBy: opened.args.openedBy,
+              reason: opened.args.reason,
+            });
+          } else {
+            setDisputeLookupError('The DisputeOpened event was not found for this agreement.');
+          }
+        } catch {
+          setDisputeLookupError(
+            'The dispute event could not be loaded from the configured RPC. No reason will be assumed.',
+          );
+        }
+      }
     } catch (loadError) {
       setError(friendlyContractError(loadError));
     } finally {
       setLoading(false);
     }
-  }, [getReadContract, id, isConfigured]);
+  }, [address, deployment, getReadContract, id, isConfigured]);
 
   useEffect(() => {
     load();
@@ -94,16 +142,39 @@ function AgreementDetail() {
   }, []);
 
   useEffect(() => {
+    if (!isConfigured || agreement?.status !== 0) return undefined;
+    let cancelled = false;
+    const refreshRefundEligibility = async () => {
+      try {
+        const contract = await getReadContract();
+        const refundable = await contract.canRefund(id);
+        if (!cancelled) setCanRefund(refundable);
+      } catch {
+        // The main load path reports RPC errors; keep the last confirmed chain value here.
+      }
+    };
+    const timer = window.setInterval(refreshRefundEligibility, 12_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [agreement?.status, getReadContract, id, isConfigured]);
+
+  useEffect(() => {
     let cancelled = false;
     fetch('/api/pinata/config')
       .then((response) => response.ok ? response.json() : null)
       .then((config) => {
-        if (!cancelled && config?.gatewayBaseUrl) {
-          setGatewayBaseUrl(normalizeGatewayBaseUrl(config.gatewayBaseUrl));
+        if (!cancelled) {
+          setPinataConfigured(Boolean(config?.configured));
+          if (config?.gatewayBaseUrl) {
+            setGatewayBaseUrl(normalizeGatewayBaseUrl(config.gatewayBaseUrl));
+          }
         }
       })
       .catch(() => {
         // Public gateway fallback remains available for previously uploaded IPFS evidence.
+        if (!cancelled) setPinataConfigured(false);
       });
     return () => {
       cancelled = true;
@@ -146,7 +217,7 @@ function AgreementDetail() {
   };
 
   const submitEvidence = async (milestone) => {
-    if (!evidenceFile) return;
+    if (!evidenceFile || !pinataConfigured) return;
     try {
       setBusyAction('proof');
       setError('');
@@ -215,8 +286,8 @@ function AgreementDetail() {
   const currentMilestonePending = agreement.status === 0 && currentMilestone?.state === 0;
   const activeDeadline = currentMilestonePending ? currentMilestone.dueAt : agreement.deadline;
   const deadlineState = getDeadlineState(activeDeadline, nowSeconds, agreement.status === 0);
-  const refundAvailable = canRefund
-    || (currentMilestonePending && nowSeconds > currentMilestone.dueAt);
+  const refundAvailable = isRefundButtonAvailable(canRefund);
+  const browserShowsMissedDeadline = currentMilestonePending && nowSeconds > currentMilestone.dueAt;
   let nextStep = {
     title: 'This agreement is closed',
     detail: `Final status: ${agreement.statusLabel}. Review the immutable milestones and transaction history.`,
@@ -298,6 +369,9 @@ function AgreementDetail() {
             {refundAvailable && (
               <span>The pending milestone was missed. Remaining escrow can now be refunded to the Shipper.</span>
             )}
+            {!refundAvailable && browserShowsMissedDeadline && (
+              <span>Waiting for the blockchain timestamp to confirm refund eligibility.</span>
+            )}
           </div>
         )}
         <div className="notice next-step-notice">
@@ -319,7 +393,7 @@ function AgreementDetail() {
                 {busyAction === 'refund' ? 'Refunding…' : 'Claim deadline refund'}
               </button>
             )}
-            <div className="inline-form">
+            {!refundAvailable && <div className="inline-form">
               <input
                 value={disputeReason}
                 onChange={(event) => setDisputeReason(event.target.value)}
@@ -332,13 +406,45 @@ function AgreementDetail() {
               >
                 Open dispute
               </button>
-            </div>
+            </div>}
           </div>
         )}
 
         {agreement.status === 3 && isArbitrator && (
           <div className="action-panel">
             <h3>Arbitrator resolution</h3>
+            <div className="detail-grid">
+              <div>
+                <small>Opened by</small>
+                <strong title={disputeInfo?.openedBy || ''}>
+                  {disputeInfo?.openedBy ? shortAddress(disputeInfo.openedBy) : 'Unavailable'}
+                </strong>
+              </div>
+              <div><small>Remaining escrow</small><strong>{agreement.remainingEth} ETH</strong></div>
+              <div>
+                <small>Current milestone</small>
+                <strong>{currentMilestone ? `${currentMilestone.index + 1}. ${currentMilestone.name}` : 'Unavailable'}</strong>
+              </div>
+              <div>
+                <small>Evidence state</small>
+                <strong>{currentMilestone?.statusLabel || 'Unavailable'}</strong>
+              </div>
+            </div>
+            {disputeInfo ? (
+              <div className="notice"><strong>Dispute reason</strong><p>{disputeInfo.reason}</p></div>
+            ) : disputeLookupError ? (
+              <div className="notice error">{disputeLookupError}</div>
+            ) : (
+              <div className="notice">Loading the dispute event…</div>
+            )}
+            {currentMilestone?.proofHash !== ethers.ZeroHash && (
+              <div className="proof-box">
+                <small>Current evidence hash</small>
+                <code>{currentMilestone.proofHash}</code>
+                <small>Evidence URI</small>
+                <code>{currentMilestone.proofURI}</code>
+              </div>
+            )}
             <p>Enter the portion of the remaining {agreement.remainingEth} ETH to return to the shipper. The carrier receives the rest.</p>
             <div className="inline-form">
               <input type="number" min="0" step="any" value={resolutionEth} onChange={(event) => setResolutionEth(event.target.value)} placeholder="Shipper share (ETH)" />
@@ -388,13 +494,23 @@ function AgreementDetail() {
                       {evidenceUrl ? (
                         <a href={evidenceUrl} target="_blank" rel="noreferrer">Open receipt or photo from IPFS</a>
                       ) : milestone.proofURI ? (
-                        <code>{milestone.proofURI}</code>
+                        <>
+                          <code>{milestone.proofURI}</code>
+                          <span className="notice error">
+                            This is not a valid ChainCargo IPFS CID. Legacy or external evidence cannot be fetched or verified automatically.
+                          </span>
+                        </>
                       ) : null}
                       <span>Submitted {formatDate(milestone.submittedAt)}</span>
                     </div>
                   )}
                   {isCurrent && isCarrier && milestone.state === 0 && !milestoneExpired && !agreementExpired && (
                     <div className="evidence-form">
+                      {pinataConfigured === false && (
+                        <div className="notice error">
+                          Evidence upload is disabled because the Pinata server is not configured. Existing IPFS evidence remains viewable through the public gateway.
+                        </div>
+                      )}
                       <label>
                         Receipt, delivery photo, or supporting PDF
                         <input
@@ -402,6 +518,7 @@ function AgreementDetail() {
                           onChange={(event) => selectEvidenceFile(event.target.files?.[0])}
                           ref={evidenceFileInputRef}
                           type="file"
+                          disabled={!pinataConfigured}
                         />
                       </label>
                       {evidenceFile && (
@@ -412,7 +529,7 @@ function AgreementDetail() {
                       {uploadStatus && <div className="notice">{uploadStatus}</div>}
                       <button
                         className="btn btn-primary"
-                        disabled={Boolean(busyAction) || !evidenceFile}
+                        disabled={Boolean(busyAction) || !evidenceFile || !pinataConfigured}
                         onClick={() => submitEvidence(milestone)}
                       >
                         {busyAction === 'proof' ? 'Uploading evidence…' : 'Upload to IPFS & submit proof'}

@@ -19,6 +19,8 @@ const errorMessages = {
   EmptyTitle: 'Enter an agreement name.',
   ZeroFunding: 'The escrow amount must be greater than zero.',
   MilestoneArrayLengthMismatch: 'The milestone fields have inconsistent lengths.',
+  InvalidProofURI: 'Evidence must use a non-empty, bounded ipfs:// URI.',
+  DeadlineRefundAvailable: 'The pending milestone deadline has passed. The refund must be handled before a new dispute.',
 };
 
 function findRevertData(error) {
@@ -54,6 +56,8 @@ function describeCustomError(parsed) {
       return `Milestone ${index} cannot be later than the final deadline.`;
     case 'PayoutTotalMismatch':
       return 'Milestone payouts must exactly equal the deposited escrow amount.';
+    case 'InputTooLong':
+      return `A text value is too long. The contract allows at most ${parsed.args.maximumLength} bytes.`;
     default:
       return errorMessages[parsed.name] || null;
   }

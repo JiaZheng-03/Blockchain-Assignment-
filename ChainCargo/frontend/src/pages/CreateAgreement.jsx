@@ -14,6 +14,7 @@ import {
   getCarrierReputationTier,
   readCarrierReputation,
 } from '../utils/carrierReputation';
+import { findAgreementCreatedId } from '../utils/contractReceipts';
 
 const emptyMilestone = () => ({ name: '', details: '', percentage: '', dueAt: '' });
 
@@ -29,6 +30,7 @@ function CreateAgreement() {
     switchWallet,
   } = useWallet();
   const {
+    address,
     getReadContract,
     getWriteContract,
     isConfigured,
@@ -265,16 +267,21 @@ function CreateAgreement() {
         { value: totalWei },
       );
       const receipt = await waitForTransaction(transaction);
-      const createdLog = receipt.logs
-        .map((log) => {
-          try {
-            return contract.interface.parseLog(log);
-          } catch {
-            return null;
-          }
-        })
-        .find((log) => log?.name === 'AgreementCreated');
-      navigate(`/agreement/${createdLog?.args.agreementId ?? 0}`);
+      const agreementId = findAgreementCreatedId(
+        receipt,
+        contract.interface,
+        address,
+      );
+      if (agreementId === null) {
+        navigate('/history', {
+          state: {
+            historyNotice:
+              'The agreement transaction succeeded, but its ID could not be read from the receipt. Locate the new agreement in this history list.',
+          },
+        });
+        return;
+      }
+      navigate(`/agreement/${agreementId.toString()}`);
     } catch (submitError) {
       setError(friendlyContractError(submitError));
     } finally {

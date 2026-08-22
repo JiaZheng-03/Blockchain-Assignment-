@@ -1,5 +1,5 @@
 const hre = require("hardhat");
-const deployment = require("../src/contracts/deployment.json");
+const deployment = require("../src/contracts/deployment.local.json");
 
 async function registerIfNeeded(escrow, signer, name, role) {
   const profile = await escrow.getProfile(signer.address);
@@ -9,6 +9,13 @@ async function registerIfNeeded(escrow, signer, name, role) {
 }
 
 async function main() {
+  const network = await hre.ethers.provider.getNetwork();
+  if (Number(network.chainId) !== 31337 || Number(deployment.chainId) !== 31337) {
+    throw new Error("Local seeding requires chain 31337 and deployment.local.json.");
+  }
+  if (!hre.ethers.isAddress(deployment.address || "")) {
+    throw new Error("No local deployment is recorded. Run npm run deploy:local first.");
+  }
   const [arbitrator, shipper, carrier] = await hre.ethers.getSigners();
   const code = await hre.ethers.provider.getCode(deployment.address);
   if (code === "0x") {

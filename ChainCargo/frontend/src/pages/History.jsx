@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react';
 import { ethers } from 'ethers';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { friendlyContractError, useContract } from '../context/ContractContext';
-import deployment from '../contracts/deployment.json';
 import { normalizeAgreement } from '../hooks/useAgreements';
 import { useProfile } from '../hooks/useProfile';
 import { buildAgreementIds, isArbitrationAgreement } from '../utils/arbitration';
 import {
   decodeEscrowEvent,
-  findContractDeploymentBlock,
   groupAgreementHistory,
   loadContractLogsInChunks,
   reconstructAgreementHistory,
+  selectHistoryStartBlock,
 } from '../utils/historyEvents';
 
 const eventDetails = {
@@ -27,10 +26,12 @@ const eventDetails = {
 };
 
 function History() {
+  const location = useLocation();
   const { account, isConnected } = useWallet();
   const { isArbitrator } = useProfile();
   const {
     address,
+    deployment,
     getReadContract,
     isConfigured,
     refreshKey,
@@ -39,7 +40,7 @@ function History() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [historyNotice, setHistoryNotice] = useState('');
+  const [historyNotice, setHistoryNotice] = useState(location.state?.historyNotice || '');
 
   useEffect(() => {
     let cancelled = false;
@@ -53,7 +54,7 @@ function History() {
       try {
         setLoading(true);
         setError('');
-        setHistoryNotice('');
+        setHistoryNotice(location.state?.historyNotice || '');
         const contract = await getReadContract();
         const candidateIds = isArbitrator
           ? buildAgreementIds(await contract.agreementCount())
@@ -82,10 +83,14 @@ function History() {
         try {
           const provider = contract.runner;
           const latestBlock = await provider.getBlockNumber();
-          const savedDeploymentBlock = Number(deployment.deploymentBlock || 0);
-          const fromBlock = savedDeploymentBlock > 0
-            ? savedDeploymentBlock
-            : await findContractDeploymentBlock(provider, address, latestBlock);
+          const network = await provider.getNetwork();
+          const fromBlock = await selectHistoryStartBlock({
+            provider,
+            address,
+            chainId: Number(network.chainId),
+            deployment,
+            latestBlock,
+          });
           const eventTopics = Object.keys(eventDetails).map(
             (name) => contract.interface.getEvent(name).topicHash,
           );
@@ -164,7 +169,7 @@ function History() {
     return () => {
       cancelled = true;
     };
-  }, [account, address, getReadContract, isArbitrator, isConfigured, isConnected, refreshKey]);
+  }, [account, address, deployment, getReadContract, isArbitrator, isConfigured, isConnected, location.state, refreshKey]);
 
   const agreementHistory = groupAgreementHistory(agreements, events);
 

@@ -60,3 +60,7 @@ export function isRefundAvailable(agreement, nowSeconds) {
     && Boolean(agreement.currentMilestoneDueAt)
     && nowSeconds > agreement.currentMilestoneDueAt;
 }
+
+export function isRefundButtonAvailable(contractCanRefund) {
+  return contractCanRefund === true;
+}

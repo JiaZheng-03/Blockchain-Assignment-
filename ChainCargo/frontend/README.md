@@ -60,7 +60,7 @@ Deploy the contract once:
 npm run deploy:sepolia
 ```
 
-The script validates chain `11155111` and writes the Sepolia address and ABI to `src/contracts/deployment.json`.
+The script validates chain `11155111` and writes the Sepolia address and ABI only to `src/contracts/deployment.json`.
 
 Start the web app:
 
@@ -106,17 +106,18 @@ npm run test:ui          # run validation, error, event, and MetaMask-network te
 npm run lint             # lint React
 npm run build            # create production UI build
 npm run chain            # start local Hardhat node
-npm run deploy:local     # deploy and update frontend address/ABI
+npm run deploy:local     # deploy and update deployment.local.json only
 npm run seed:local       # add repeatable demo roles and a funded agreement
 npm run demo:local       # deploy, then seed the local demo
 npm run deploy:sepolia   # deploy the coursework contract to Sepolia
 npm run dev              # start the protected Pinata API and Vite together
+npm run dev:local        # start API/UI on chain 31337 using .env.hardhat
 npm run dev:api          # start only the Pinata signing API on port 3001
 npm run dev:ui           # start only Vite (uploads require the API)
 npm start                # serve the production dist folder and Pinata API
 ```
 
-The `chain`, `deploy:local`, `seed:local`, and `demo:local` commands are development helpers only. The submitted application uses Sepolia.
+The `chain`, `deploy:local`, `seed:local`, `demo:local`, and `dev:local` commands are development helpers only. The submitted application uses Sepolia. For local development, copy `.env.hardhat.example` to `.env.hardhat`, start `npm run chain` in one terminal, run `npm run deploy:local` and optionally `npm run seed:local` in another, then run `npm run dev:local`. Both the frontend and API will use chain 31337, `LOCAL_RPC_URL`, and `src/contracts/deployment.local.json`; the Sepolia deployment file is never overwritten.
 
 ## Date and deployment rules
 
@@ -127,7 +128,7 @@ The `chain`, `deploy:local`, `seed:local`, and `demo:local` commands are develop
 - Sepolia data persists across browser and computer restarts.
 - Pinata evidence is public through its IPFS CID; use dummy or encrypted files, never sensitive commercial records.
 - If the UI reports the wrong network, switch MetaMask to Sepolia chain `11155111`.
-- If the contract is redeployed, commit the updated `src/contracts/deployment.json` so every team member uses the same Sepolia address.
+- If the contract is deliberately redeployed to Sepolia, commit the updated `src/contracts/deployment.json` so every team member uses the same Sepolia address. Local deploys update only `deployment.local.json`.
 
 ## Contract security decisions
 

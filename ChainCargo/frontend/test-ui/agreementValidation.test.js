@@ -13,6 +13,7 @@ import {
   groupAgreementHistory,
   loadContractLogsInChunks,
   reconstructAgreementHistory,
+  selectHistoryStartBlock,
 } from '../src/utils/historyEvents.js';
 import {
   SEPOLIA_NETWORK,
@@ -33,8 +34,11 @@ import {
   evidenceHashMatches,
   getEvidenceGatewayUrl,
   hashEvidenceBytes,
+  hashEvidenceFile,
+  isValidIpfsCid,
   ipfsUriToCid,
   normalizeGatewayBaseUrl,
+  validateEvidenceFileMetadata,
 } from '../src/utils/pinataEvidence.js';
 import { filterAndSortAgreements } from '../src/utils/agreementFilters.js';
 import {
@@ -42,12 +46,19 @@ import {
   getAgreementActionDeadline,
   getDeadlineState,
   isRefundAvailable,
+  isRefundButtonAvailable,
 } from '../src/utils/deadlineAlerts.js';
 import { buildDashboardMetrics } from '../src/utils/dashboardMetrics.js';
 import {
   getCarrierReputationTier,
   readCarrierReputation,
 } from '../src/utils/carrierReputation.js';
+import {
+  deploymentMatchesContract,
+  resolveContractAddress,
+  selectDeploymentForChain,
+} from '../src/utils/deploymentConfig.js';
+import { findAgreementCreatedId } from '../src/utils/contractReceipts.js';
 
 const nowMs = new Date(2026, 6, 25, 9, 0).getTime();
 const shipper = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
@@ -119,6 +130,13 @@ test('uses the current pending milestone for urgency and refund availability', (
   const submitted = { ...agreement, currentMilestoneState: 1 };
   assert.equal(getAgreementActionDeadline(submitted), 500);
   assert.equal(isRefundAvailable(submitted, 600), false);
+});
+
+test('uses only confirmed contract state for the refund action button', () => {
+  assert.equal(isRefundButtonAvailable(true), true);
+  assert.equal(isRefundButtonAvailable(false), false);
+  assert.equal(isRefundButtonAvailable(1), false);
+  assert.equal(isRefundButtonAvailable(Date.now() > 0 && false), false);
 });
 
 test('sorts active pending milestones before closed agreements when urgency is selected', () => {
@@ -223,12 +241,16 @@ test('cryptographically verifies uploaded file bytes before payout approval', ()
 });
 
 test('builds safe IPFS gateway links and wallet upload authorization messages', () => {
+  const cid = `b${'a'.repeat(58)}`;
   assert.equal(normalizeGatewayBaseUrl('demo.mypinata.cloud/'), 'https://demo.mypinata.cloud');
-  assert.equal(ipfsUriToCid('ipfs://bafyReceipt123'), 'bafyReceipt123');
+  assert.equal(isValidIpfsCid(cid), true);
+  assert.equal(ipfsUriToCid(`ipfs://${cid}`), cid);
   assert.equal(
-    getEvidenceGatewayUrl('ipfs://bafyReceipt123', 'demo.mypinata.cloud'),
-    'https://demo.mypinata.cloud/ipfs/bafyReceipt123',
+    getEvidenceGatewayUrl(`ipfs://${cid}`, 'demo.mypinata.cloud'),
+    `https://demo.mypinata.cloud/ipfs/${cid}`,
   );
+  assert.equal(getEvidenceGatewayUrl('https://attacker.example/file', 'demo.mypinata.cloud'), '');
+  assert.equal(getEvidenceGatewayUrl('ipfs://not-a-cid', 'demo.mypinata.cloud'), '');
   const message = createUploadAuthorizationMessage({
     account: carrier,
     agreementId: '7',
@@ -243,6 +265,26 @@ test('builds safe IPFS gateway links and wallet upload authorization messages', 
   assert.match(message, /ChainCargo evidence upload/);
   assert.match(message, /Agreement: 7/);
   assert.match(message, /File: receipt\.pdf/);
+});
+
+test('validates evidence metadata and hashes file bytes with Keccak-256', async () => {
+  const bytes = new TextEncoder().encode('signed receipt');
+  const file = {
+    name: 'receipt.pdf',
+    size: bytes.length,
+    type: 'application/pdf',
+    arrayBuffer: async () => bytes.buffer,
+  };
+  assert.doesNotThrow(() => validateEvidenceFileMetadata(file));
+  assert.equal(await hashEvidenceFile(file), ethers.keccak256(bytes));
+  assert.throws(
+    () => validateEvidenceFileMetadata({ ...file, type: 'text/html' }),
+    /JPEG, PNG, WebP, or PDF/i,
+  );
+  assert.throws(
+    () => validateEvidenceFileMetadata({ ...file, size: 10 * 1024 * 1024 + 1 }),
+    /10 MB or smaller/i,
+  );
 });
 
 function validDraft() {
@@ -340,6 +382,16 @@ test('caps milestone count to keep agreement creation gas-bounded', () => {
   assert.throws(() => validateAgreementDraft(draft), /at most 20 milestones/i);
 });
 
+test('mirrors important contract text limits before transaction submission', () => {
+  const longTitle = validDraft();
+  longTitle.form.title = 'x'.repeat(201);
+  assert.throws(() => validateAgreementDraft(longTitle), /200 bytes or fewer/i);
+
+  const longDetails = validDraft();
+  longDetails.milestones[0].details = 'x'.repeat(1001);
+  assert.throws(() => validateAgreementDraft(longDetails), /1000 bytes or fewer/i);
+});
+
 test('decodes Solidity custom errors into actionable messages', () => {
   const contractInterface = new ethers.Interface(ESCROW_ABI);
   const invalidDateData = contractInterface.encodeErrorResult(
@@ -413,6 +465,78 @@ test('finds the contract deployment block and reads history in RPC-safe chunks',
   );
   assert.deepEqual(logCalls[0].topics, [['0xevent1', '0xevent2']]);
   assert.equal(logs.length, 3);
+});
+
+test('uses saved deployment blocks only for the matching contract and chain', async () => {
+  const savedAddress = '0x0000000000000000000000000000000000004321';
+  const overrideAddress = '0x0000000000000000000000000000000000009876';
+  const deployment = { address: savedAddress, chainId: 11155111, deploymentBlock: 500 };
+  let codeCalls = 0;
+  const provider = {
+    getCode: async (_address, block) => {
+      codeCalls += 1;
+      return block >= 700 ? '0x6000' : '0x';
+    },
+  };
+
+  assert.equal(await selectHistoryStartBlock({
+    provider,
+    address: savedAddress,
+    chainId: 11155111,
+    deployment,
+    latestBlock: 1_000,
+  }), 500);
+  assert.equal(codeCalls, 0);
+
+  assert.equal(await selectHistoryStartBlock({
+    provider,
+    address: overrideAddress,
+    chainId: 11155111,
+    deployment,
+    latestBlock: 1_000,
+  }), 700);
+  assert.ok(codeCalls > 0);
+
+  const callsBeforeChainMismatch = codeCalls;
+  assert.equal(await selectHistoryStartBlock({
+    provider,
+    address: savedAddress,
+    chainId: 31337,
+    deployment,
+    latestBlock: 1_000,
+  }), 700);
+  assert.ok(codeCalls > callsBeforeChainMismatch);
+});
+
+test('selects local or Sepolia deployment metadata without inventing addresses', () => {
+  const sepolia = { address: shipper, chainId: 11155111 };
+  const local = { address: carrier, chainId: 31337 };
+  assert.equal(selectDeploymentForChain(11155111, sepolia, local), sepolia);
+  assert.equal(selectDeploymentForChain(31337, sepolia, local), local);
+  assert.equal(selectDeploymentForChain(1, sepolia, local).address, '');
+  assert.equal(resolveContractAddress({ deployment: local }), carrier);
+  assert.equal(resolveContractAddress({ deployment: { address: '', chainId: 31337 } }), '');
+  assert.equal(deploymentMatchesContract({ address: shipper, chainId: 11155111, deployment: sepolia }), true);
+  assert.equal(deploymentMatchesContract({ address: carrier, chainId: 11155111, deployment: sepolia }), false);
+});
+
+test('extracts AgreementCreated only from the confirmed escrow contract logs', () => {
+  const contractInterface = new ethers.Interface(ESCROW_ABI);
+  const encoded = contractInterface.encodeEventLog(
+    contractInterface.getEvent('AgreementCreated'),
+    [9, shipper, carrier, ethers.parseEther('1'), 1_800_000_000],
+  );
+  const correctLog = { address: shipper, topics: encoded.topics, data: encoded.data };
+  const foreignLog = { ...correctLog, address: carrier };
+
+  assert.equal(
+    findAgreementCreatedId({ logs: [foreignLog, correctLog] }, contractInterface, shipper),
+    9n,
+  );
+  assert.equal(
+    findAgreementCreatedId({ logs: [foreignLog] }, contractInterface, shipper),
+    null,
+  );
 });
 
 test('reconstructs viewable history when an RPC rejects event-log queries', () => {

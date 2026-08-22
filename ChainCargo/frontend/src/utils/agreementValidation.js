@@ -2,6 +2,16 @@ import { ethers } from 'ethers';
 
 export const MIN_SCHEDULE_BUFFER_MS = 2 * 60 * 1000;
 export const MAX_MILESTONES = 20;
+export const MAX_AGREEMENT_TITLE_LENGTH = 200;
+export const MAX_AGREEMENT_NOTES_LENGTH = 2_000;
+export const MAX_MILESTONE_NAME_LENGTH = 120;
+export const MAX_MILESTONE_DETAILS_LENGTH = 1_000;
+
+function requireMaximumUtf8Length(value, maximum, label) {
+  if (ethers.toUtf8Bytes(value).length > maximum) {
+    throw new Error(`${label} must be ${maximum} bytes or fewer.`);
+  }
+}
 
 export function toDateTimeLocalValue(date) {
   const pad = (value) => String(value).padStart(2, '0');
@@ -20,6 +30,8 @@ export function toDateTimeLocalValue(date) {
 
 export function validateAgreementBasics({ form, account, nowMs = Date.now() }) {
   if (!form.title.trim()) throw new Error('Enter an agreement name.');
+  requireMaximumUtf8Length(form.title, MAX_AGREEMENT_TITLE_LENGTH, 'Agreement name');
+  requireMaximumUtf8Length(form.notes, MAX_AGREEMENT_NOTES_LENGTH, 'Agreement notes');
   if (!ethers.isAddress(form.carrier)) throw new Error('Enter a valid carrier wallet address.');
   if (form.carrier === ethers.ZeroAddress) throw new Error('The carrier cannot be the zero address.');
   if (account && form.carrier.toLowerCase() === account.toLowerCase()) {
@@ -70,9 +82,19 @@ export function validateAgreementDraft({ form, milestones, account, nowMs = Date
   milestones.forEach((milestone, index) => {
     const number = index + 1;
     if (!milestone.name.trim()) throw new Error(`Enter a name for milestone ${number}.`);
+    requireMaximumUtf8Length(
+      milestone.name,
+      MAX_MILESTONE_NAME_LENGTH,
+      `Milestone ${number} name`,
+    );
     if (!milestone.details.trim()) {
       throw new Error(`Describe the required evidence for milestone ${number}.`);
     }
+    requireMaximumUtf8Length(
+      milestone.details,
+      MAX_MILESTONE_DETAILS_LENGTH,
+      `Milestone ${number} details`,
+    );
 
     const percentage = Number(milestone.percentage);
     if (!Number.isInteger(percentage) || percentage < 1 || percentage > 100) {
