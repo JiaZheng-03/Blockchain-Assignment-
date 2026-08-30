@@ -154,11 +154,12 @@ app.use(express.json({ limit: '16kb' }));
 
 app.get('/api/storage/config', async (_request, response) => {
   let contractSupported = false;
+  let contractCheckError = null;
   if (supabase && escrow) {
     try {
       contractSupported = await contractSupportsSupabaseEvidence();
-    } catch {
-      // Report an unavailable/legacy contract without exposing RPC details.
+    } catch (error) {
+      contractCheckError = error;
     }
   }
 
@@ -167,6 +168,8 @@ app.get('/api/storage/config', async (_request, response) => {
     message = 'Add a valid SUPABASE_URL, SUPABASE_SECRET_KEY, and bucket name to .env.';
   } else if (!escrow) {
     message = `No escrow contract is configured for chain ${chainId}.`;
+  } else if (contractCheckError && isRpcUnavailable(contractCheckError)) {
+    message = 'The Sepolia RPC is unavailable. Check SEPOLIA_RPC_URL and try again.';
   } else if (!contractSupported) {
     message = 'Redeploy LogisticsEscrow before using Supabase evidence storage.';
   }

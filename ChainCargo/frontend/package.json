@@ -24,7 +24,7 @@
     "demo:local": "npm run deploy:local && npm run seed:local"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.112.4",
+    "@supabase/supabase-js": "2.57.4",
     "ethers": "^6.17.0",
     "express": "^5.2.1",
     "react": "^19.2.7",

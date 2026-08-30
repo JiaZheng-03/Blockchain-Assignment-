@@ -47,11 +47,6 @@ function Register() {
     setError('');
   };
 
-  const selectWalletForOtherRole = async () => {
-    chooseRole(profile?.role === 1 ? '2' : '1');
-    await switchWallet();
-  };
-
   const submit = async (event) => {
     event.preventDefault();
     if (!isConnected) {
@@ -135,13 +130,6 @@ function Register() {
             </div>
             <div className="next-actions">
               <Link className="btn btn-primary" to="/dashboard">Open dashboard</Link>
-              <button className="btn btn-secondary" onClick={selectWalletForOtherRole} disabled={isConnecting}>
-                {isConnecting
-                  ? 'Choose account in MetaMask…'
-                  : authorizedAccountCount > 1
-                    ? `Switch to ${profile.role === 1 ? 'Carrier' : 'Shipper'} wallet`
-                    : `Authorize a wallet for ${profile.role === 1 ? 'Carrier' : 'Shipper'}`}
-              </button>
             </div>
           </>
         ) : (
