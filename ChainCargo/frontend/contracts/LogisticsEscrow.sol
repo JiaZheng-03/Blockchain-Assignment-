@@ -7,7 +7,8 @@ contract LogisticsEscrow {
     enum Role {
         None,
         Shipper,
-        Carrier
+        Carrier,
+        Arbitrator
     }
 
     enum AgreementStatus {
@@ -159,7 +160,11 @@ contract LogisticsEscrow {
         if (profiles[msg.sender].role != Role.None) revert AlreadyRegistered();
         if (bytes(name).length == 0) revert InvalidInput();
         _requireMaximumLength(name, MAX_PROFILE_NAME_LENGTH);
-        if (role != Role.Shipper && role != Role.Carrier) revert InvalidRole();
+        if (role == Role.Arbitrator) {
+            if (msg.sender != arbitrator) revert Unauthorized();
+        } else if (role != Role.Shipper && role != Role.Carrier) {
+            revert InvalidRole();
+        }
 
         profiles[msg.sender] = UserProfile(name, role, uint64(block.timestamp));
         roleAccounts[role].push(msg.sender);
@@ -171,7 +176,7 @@ contract LogisticsEscrow {
     }
 
     function getUsersByRole(Role role) external view returns (address[] memory) {
-        if (role != Role.Shipper && role != Role.Carrier) revert InvalidRole();
+        if (role == Role.None) revert InvalidRole();
         return roleAccounts[role];
     }
 
@@ -362,7 +367,9 @@ contract LogisticsEscrow {
         uint256 agreementId,
         uint256 shipperAmount
     ) external agreementExists(agreementId) nonReentrant {
-        if (msg.sender != arbitrator) revert Unauthorized();
+        if (msg.sender != arbitrator || profiles[msg.sender].role != Role.Arbitrator) {
+            revert Unauthorized();
+        }
         Agreement storage agreement = agreements[agreementId];
         if (agreement.status != AgreementStatus.Disputed) revert InvalidStatus();
         if (shipperAmount > agreement.remainingAmount) revert InvalidInput();

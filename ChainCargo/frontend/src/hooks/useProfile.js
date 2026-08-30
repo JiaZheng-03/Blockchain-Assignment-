@@ -61,8 +61,9 @@ export function useProfile() {
     Boolean(profile?.account && account) &&
     profile.account.toLowerCase() === account.toLowerCase();
   const activeProfile = profileMatchesAccount ? profile : null;
-  const isArbitrator = addressesEqual(account, arbitratorAddress);
+  const isDesignatedArbitrator = addressesEqual(account, arbitratorAddress);
   const isRegistered = Boolean(activeProfile?.role);
+  const isArbitrator = isDesignatedArbitrator && activeProfile?.role === 3;
   const identityLoading = loading || (
     Boolean(account && isConnected && isConfigured) &&
     !addressesEqual(account, resolvedAccount)
@@ -73,11 +74,12 @@ export function useProfile() {
     arbitratorAddress,
     loading: identityLoading,
     error,
-    hasAppAccess: isRegistered || isArbitrator,
+    hasAppAccess: isRegistered,
     isArbitrator,
+    isDesignatedArbitrator,
     isRegistered,
-    isShipper: !isArbitrator && activeProfile?.role === 1,
-    isCarrier: !isArbitrator && activeProfile?.role === 2,
-    roleLabel: isArbitrator ? 'Arbitrator' : activeProfile?.roleLabel || 'Unregistered',
+    isShipper: activeProfile?.role === 1,
+    isCarrier: activeProfile?.role === 2,
+    roleLabel: activeProfile?.roleLabel || 'Unregistered',
   };
 }

@@ -9,6 +9,7 @@ describe("LogisticsEscrow", function () {
     const escrow = await Escrow.deploy();
     await escrow.waitForDeployment();
 
+    await escrow.connect(arbitrator).register("ChainCargo Arbitration", 3);
     await escrow.connect(shipper).register("Acme Imports", 1);
     await escrow.connect(carrier).register("Swift Freight", 2);
 
@@ -34,17 +35,27 @@ describe("LogisticsEscrow", function () {
   }
 
   it("registers wallet roles and prevents duplicate registration", async function () {
-    const { escrow, shipper, carrier } = await deployFixture();
+    const { escrow, arbitrator, shipper, carrier } = await deployFixture();
     const profile = await escrow.getProfile(shipper.address);
     expect(profile.name).to.equal("Acme Imports");
     expect(profile.role).to.equal(1);
     expect(await escrow.getUsersByRole(1)).to.deep.equal([shipper.address]);
     expect(await escrow.getUsersByRole(2)).to.deep.equal([carrier.address]);
+    expect(await escrow.getUsersByRole(3)).to.deep.equal([arbitrator.address]);
     await expect(escrow.connect(shipper).register("Again", 1))
       .to.be.revertedWithCustomError(escrow, "AlreadyRegistered");
   });
 
-  it("rejects role-directory queries that are not participant roles", async function () {
+  it("allows only the deployer to register as Arbitrator", async function () {
+    const { escrow, arbitrator, outsider } = await deployFixture();
+    const profile = await escrow.getProfile(arbitrator.address);
+    expect(profile.role).to.equal(3);
+
+    await expect(escrow.connect(outsider).register("Fake arbitrator", 3))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+  });
+
+  it("rejects role-directory queries for the unregistered role", async function () {
     const { escrow } = await deployFixture();
     await expect(escrow.getUsersByRole(0))
       .to.be.revertedWithCustomError(escrow, "InvalidRole");

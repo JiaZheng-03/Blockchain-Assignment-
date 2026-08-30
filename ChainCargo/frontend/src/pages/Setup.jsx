@@ -48,6 +48,7 @@ function Setup() {
   const {
     hasAppAccess,
     isArbitrator,
+    isDesignatedArbitrator,
     isRegistered,
     loading: profileLoading,
     profile,
@@ -136,8 +137,6 @@ function Setup() {
         <ChecklistItem complete={hasAppAccess} number="4" title="Recognize this wallet’s role">
           {profileLoading ? (
             <p>Reading registration from the contract…</p>
-          ) : isArbitrator ? (
-            <p>Recognized automatically as the contract <strong>Arbitrator</strong>.</p>
           ) : isRegistered ? (
             <p>Registered as <strong>{profile.roleLabel}</strong>: {profile.name}</p>
           ) : (
@@ -155,6 +154,13 @@ function Setup() {
                 <strong>Register as Carrier</strong>
                 <small>Submit proofs and receive payouts.</small>
               </Link>
+              {isDesignatedArbitrator && (
+                <Link className="role-card" to="/register?role=arbitrator">
+                  <span className="role-icon">A</span>
+                  <strong>Register as Arbitrator</strong>
+                  <small>Resolve disputed escrow as the contract deployer.</small>
+                </Link>
+              )}
             </div>
           )}
         </ChecklistItem>
