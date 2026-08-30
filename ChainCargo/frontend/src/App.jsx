@@ -12,6 +12,7 @@ import AgreementDetail from './pages/AgreementDetail';
 import History from './pages/History';
 import Profile from './pages/Profile';
 import AccountPermissionDialog from './components/AccountPermissionDialog';
+import NoticeToasts from './components/NoticeToasts';
 import './App.css';
 
 function AppLayout() {
@@ -33,6 +34,7 @@ function AppLayout() {
 function App() {
   return (
     <BrowserRouter>
+      <NoticeToasts />
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Home />} />

@@ -52,12 +52,16 @@ function CreateAgreement() {
   const [carriersLoading, setCarriersLoading] = useState(false);
   const [carrierDirectoryError, setCarrierDirectoryError] = useState('');
   const [minimumDateTime, setMinimumDateTime] = useState('');
+  const [minimumMilestoneDateTime, setMinimumMilestoneDateTime] = useState('');
   const [step, setStep] = useState(1);
 
   useEffect(() => {
     const updateMinimum = () => {
       setMinimumDateTime(
-        toDateTimeLocalValue(new Date(Date.now() + MIN_SCHEDULE_BUFFER_MS)),
+        toDateTimeLocalValue(new Date(Date.now() + MIN_SCHEDULE_BUFFER_MS + 60_000)),
+      );
+      setMinimumMilestoneDateTime(
+        toDateTimeLocalValue(new Date(Date.now() + 60_000)),
       );
     };
     updateMinimum();
@@ -172,8 +176,17 @@ function CreateAgreement() {
     );
   };
 
+  const updatePercentage = (index, value) => {
+    const percentage = Math.min(99, Math.max(1, Number.parseInt(value, 10) || 1));
+    setMilestones((current) => current.map((milestone, itemIndex) => ({
+      ...milestone,
+      percentage: itemIndex === index ? String(percentage) : String(100 - percentage),
+    })));
+    setError('');
+  };
+
   const getMilestoneMinimum = (index) => {
-    if (index === 0 || !milestones[index - 1].dueAt) return minimumDateTime;
+    if (index === 0 || !milestones[index - 1].dueAt) return minimumMilestoneDateTime;
     const previousDueMs = new Date(milestones[index - 1].dueAt).getTime();
     return toDateTimeLocalValue(new Date(previousDueMs + 60_000));
   };
@@ -320,7 +333,7 @@ function CreateAgreement() {
     <div className="form-card agreement-wizard">
       <span className="eyebrow">Shipper workflow</span>
       <h2>Create New Agreement</h2>
-      <p>Define the shipment, schedule the fixed 30%/70% milestones, then review everything before funding escrow.</p>
+      <p>Define the shipment, choose its milestone payment split, then review everything before funding escrow.</p>
 
       <div className="wizard-steps" aria-label="Agreement creation progress">
         {['Agreement Details', 'Milestones', 'Review & Fund'].map((label, index) => {
@@ -404,7 +417,7 @@ function CreateAgreement() {
             <label>
               Final Delivery Deadline
               <input name="deadline" value={form.deadline} onChange={updateForm} required min={minimumDateTime} type="datetime-local" />
-              <small>Must be at least 2 minutes from now.</small>
+              <small>Must be at least 1 hour from now.</small>
             </label>
             <label>Agreement Notes<textarea name="notes" value={form.notes} onChange={updateForm} rows="4" placeholder="Add shipment instructions" /></label>
             <div className="wizard-actions">
@@ -419,8 +432,8 @@ function CreateAgreement() {
           <section className="wizard-section">
             <div className="section-heading">
               <div>
-                <h3>Fixed Payment Milestones</h3>
-                <p>The contract always releases 30% at cargo pickup and the remaining 70% at final delivery.</p>
+                <h3>Payment Milestones</h3>
+                <p>Choose how much escrow is released at cargo pickup and final delivery.</p>
                 <small>Due dates must be chronological and no later than the final deadline.</small>
               </div>
             </div>
@@ -434,6 +447,18 @@ function CreateAgreement() {
                   <strong>{milestone.name}</strong>
                   <p>{milestone.details}</p>
                 </div>
+                <label>
+                  Escrow percentage
+                  <input
+                    max="99"
+                    min="1"
+                    onChange={(event) => updatePercentage(index, event.target.value)}
+                    step="1"
+                    type="number"
+                    value={milestone.percentage}
+                  />
+                  <small>Changing this value automatically sets milestone {index === 0 ? 2 : 1} to {100 - Number(milestone.percentage || 0)}%.</small>
+                </label>
                 <div>
                   <label>
                     Due date
@@ -457,7 +482,7 @@ function CreateAgreement() {
             ))}
             <div className="percentage-summary valid">
               <span>Total payout allocation</span>
-              <strong>100% · fixed</strong>
+              <strong>{milestones[0].percentage}% / {milestones[1].percentage}% · 100% total</strong>
             </div>
             <div className="wizard-actions">
               <button className="btn btn-secondary" type="button" onClick={() => moveToStep(1)}>Back to Details</button>

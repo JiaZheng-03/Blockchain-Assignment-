@@ -19,17 +19,11 @@ import {
   isRefundAvailable,
 } from '../utils/deadlineAlerts';
 
-const NOTIFICATION_PREFERENCE_KEY = 'chaincargoDeadlineNotifications';
-const NOTIFICATION_ALERT_PREFIX = 'chaincargoDeadlineAlert';
-
 function Dashboard() {
   const [agreementQuery, setAgreementQuery] = useState('');
   const [agreementStatus, setAgreementStatus] = useState('all');
   const [agreementSort, setAgreementSort] = useState('newest');
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [notificationPermission, setNotificationPermission] = useState('default');
-  const [notificationMessage, setNotificationMessage] = useState('');
   const {
     account,
     authorizedAccountCount,
@@ -39,7 +33,7 @@ function Dashboard() {
     networkName,
     switchWallet,
   } = useWallet();
-  const { address: contractAddress, isConfigured } = useContract();
+  const { isConfigured } = useContract();
   const { isArbitrator, isCarrier, isShipper, profile, roleLabel } = useProfile();
   const carrierReputation = useCarrierReputation(isCarrier ? account : null);
   const { agreements, loading: agreementsLoading, error: agreementsError } = useAgreements({
@@ -84,74 +78,6 @@ function Dashboard() {
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    if (!('Notification' in window)) return;
-    setNotificationPermission(window.Notification.permission);
-    setNotificationsEnabled(
-      window.Notification.permission === 'granted'
-      && window.localStorage.getItem(NOTIFICATION_PREFERENCE_KEY) === 'enabled',
-    );
-  }, []);
-
-  useEffect(() => {
-    if (!notificationsEnabled || notificationPermission !== 'granted') return;
-
-    agreements.forEach((agreement) => {
-      if (agreement.status !== 0 || agreement.currentMilestoneState !== 0) return;
-      const actionDeadline = getAgreementActionDeadline(agreement);
-      const deadlineState = getDeadlineState(actionDeadline, nowSeconds);
-      if (!['warning', 'critical', 'overdue'].includes(deadlineState.level)) return;
-
-      const alertKey = [
-        NOTIFICATION_ALERT_PREFIX,
-        contractAddress,
-        account,
-        agreement.id,
-        actionDeadline,
-        deadlineState.level,
-      ].join(':');
-      if (window.localStorage.getItem(alertKey)) return;
-
-      const overdue = deadlineState.level === 'overdue';
-      const title = overdue
-        ? `Agreement #${agreement.id} missed its milestone deadline`
-        : `Agreement #${agreement.id} deadline approaching`;
-      const body = overdue
-        ? `${agreement.title}: ${deadlineState.countdown}. Remaining escrow can now be refunded to the Shipper.`
-        : `${agreement.title}: ${deadlineState.countdown} for ${agreement.currentMilestoneName || 'the current milestone'}.`;
-      try {
-        new window.Notification(title, { body, tag: alertKey });
-        window.localStorage.setItem(alertKey, 'sent');
-      } catch {
-        // The in-page countdown remains available if the browser suppresses a notification.
-      }
-    });
-  }, [account, agreements, contractAddress, notificationPermission, notificationsEnabled, nowSeconds]);
-
-  async function enableDeadlineNotifications() {
-    setNotificationMessage('');
-    if (!('Notification' in window)) {
-      setNotificationMessage('This browser does not support desktop notifications.');
-      return;
-    }
-
-    const permission = await window.Notification.requestPermission();
-    setNotificationPermission(permission);
-    if (permission === 'granted') {
-      window.localStorage.setItem(NOTIFICATION_PREFERENCE_KEY, 'enabled');
-      setNotificationsEnabled(true);
-      setNotificationMessage('Deadline notifications are enabled while ChainCargo is open.');
-      return;
-    }
-    setNotificationsEnabled(false);
-    setNotificationMessage('Notifications are blocked. Allow them in this site\'s browser settings to enable alerts.');
-  }
-
-  function disableDeadlineNotifications() {
-    window.localStorage.setItem(NOTIFICATION_PREFERENCE_KEY, 'disabled');
-    setNotificationsEnabled(false);
-    setNotificationMessage('Deadline notifications are disabled for ChainCargo.');
-  }
 
   return (
     <section>
@@ -246,41 +172,6 @@ function Dashboard() {
             <Link className="btn btn-secondary" to="/history">View transaction history</Link>
             {isShipper && <Link className="btn btn-primary" to="/create-agreement">Create & fund agreement</Link>}
           </div>
-        </div>
-      )}
-
-      {!isArbitrator && isConnected && agreements.length > 0 && (
-        <div className="panel notification-panel">
-          <div>
-            <span className="eyebrow">Deadline alerts</span>
-            <h3>{notificationsEnabled ? 'Browser notifications enabled' : 'Enable browser notifications'}</h3>
-            <p>
-              Receive one alert when a pending milestone reaches 24 hours, 1 hour, or becomes overdue.
-              Notifications work while ChainCargo is open in your browser.
-            </p>
-            {notificationMessage && <small>{notificationMessage}</small>}
-            {notificationPermission === 'denied' && !notificationMessage && (
-              <small>Notifications are blocked. Allow them in this site&apos;s browser settings.</small>
-            )}
-          </div>
-          {'Notification' in window ? (
-            notificationsEnabled ? (
-              <button className="btn btn-secondary" type="button" onClick={disableDeadlineNotifications}>
-                Disable notifications
-              </button>
-            ) : (
-              <button
-                className="btn btn-primary"
-                type="button"
-                onClick={enableDeadlineNotifications}
-                disabled={notificationPermission === 'denied'}
-              >
-                Enable notifications
-              </button>
-            )
-          ) : (
-            <span className="badge">Not supported</span>
-          )}
         </div>
       )}
 

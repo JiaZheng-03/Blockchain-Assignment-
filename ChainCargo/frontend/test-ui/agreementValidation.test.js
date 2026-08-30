@@ -43,6 +43,7 @@ import {
   isValidIpfsCid,
   isValidSupabaseBucketName,
   ipfsUriToCid,
+  normalizeEvidenceMimeType,
   parseSupabaseProofUri,
   supabaseProjectRefFromUrl,
   validateEvidenceFileMetadata,
@@ -297,6 +298,8 @@ test('validates evidence metadata and hashes file bytes with Keccak-256', async 
     arrayBuffer: async () => bytes.buffer,
   };
   assert.doesNotThrow(() => validateEvidenceFileMetadata(file));
+  assert.equal(normalizeEvidenceMimeType({ ...file, type: '' }), 'application/pdf');
+  assert.equal(normalizeEvidenceMimeType({ ...file, name: 'photo.jpg', type: 'image/jpg' }), 'image/jpeg');
   assert.equal(await hashEvidenceFile(file), ethers.keccak256(bytes));
   assert.throws(
     () => validateEvidenceFileMetadata({ ...file, type: 'text/html' }),
@@ -349,20 +352,24 @@ test('accepts same-day milestones in time order and allows the last one at the f
   ]);
 });
 
-test('rejects final deadlines and milestone dates in the past', () => {
+test('requires a one-hour final deadline but allows earlier future milestones', () => {
   const pastDeadline = validDraft();
   pastDeadline.form.deadline = '2026-07-25T08:00';
   assert.throws(
     () => validateAgreementDraft(pastDeadline),
-    /final deadline must be at least 2 minutes in the future/i,
+    /final deadline must be at least 1 hour in the future/i,
   );
 
   const pastMilestone = validDraft();
   pastMilestone.milestones[0].dueAt = '2026-07-25T08:30';
   assert.throws(
     () => validateAgreementDraft(pastMilestone),
-    /milestone 1 must be due at least 2 minutes in the future/i,
+    /milestone 1 must be due in the future/i,
   );
+
+  const nearMilestone = validDraft();
+  nearMilestone.milestones[0].dueAt = '2026-07-25T09:30';
+  assert.doesNotThrow(() => validateAgreementDraft(nearMilestone));
 });
 
 test('rejects non-chronological milestones and milestones after the final deadline', () => {
@@ -375,7 +382,7 @@ test('rejects non-chronological milestones and milestones after the final deadli
   assert.throws(() => validateAgreementDraft(tooLate), /cannot be later than the final deadline/i);
 });
 
-test('rejects invalid participants, modified fixed payouts, and zero-wei milestone payouts', () => {
+test('accepts custom payout percentages and rejects invalid participants or zero-wei payouts', () => {
   const sameParticipant = validDraft();
   sameParticipant.form.carrier = shipper;
   assert.throws(() => validateAgreementDraft(sameParticipant), /different wallet addresses/i);
@@ -383,11 +390,15 @@ test('rejects invalid participants, modified fixed payouts, and zero-wei milesto
   const modifiedAllocation = validDraft();
   modifiedAllocation.milestones[0].percentage = '40';
   modifiedAllocation.milestones[1].percentage = '60';
-  assert.throws(() => validateAgreementDraft(modifiedAllocation), /fixed at Cargo pickup 30%/i);
+  const allocation = validateAgreementDraft(modifiedAllocation);
+  assert.deepEqual(allocation.payouts, [400000000000000000n, 600000000000000000n]);
+
+  modifiedAllocation.milestones[1].percentage = '50';
+  assert.throws(() => validateAgreementDraft(modifiedAllocation), /add up to 100%/i);
 
   const dust = validDraft();
   dust.form.totalAmount = '0.000000000000000001';
-  assert.throws(() => validateAgreementDraft(dust), /too small for the fixed 30%\/70%/i);
+  assert.throws(() => validateAgreementDraft(dust), /too small for the selected milestone percentages/i);
 });
 
 test('requires exactly the two fixed milestones', () => {

@@ -86,21 +86,16 @@ contract LogisticsEscrow {
     error DeadlineRefundAvailable();
     error DuplicateAgreementName();
     error FixedMilestonesRequired();
-    error InvalidMilestonePayout(
-        uint256 milestoneIndex,
-        uint256 expectedPayout,
-        uint256 providedPayout
-    );
     error EvidenceMissing();
     error EvidenceHashMismatch(bytes32 storedHash, bytes32 suppliedHash);
     error PaymentAlreadyReleased();
 
     address public immutable arbitrator;
-    uint256 public constant CONTRACT_VERSION = 2;
+    uint256 public constant CONTRACT_VERSION = 3;
     string public constant EVIDENCE_URI_SCHEME = "supabase://";
     uint256 public constant MAX_MILESTONES = 2;
-    uint256 public constant PICKUP_PAYMENT_PERCENT = 30;
     uint256 public constant REPUTATION_POINTS_PER_MILESTONE = 10;
+    uint256 public constant MIN_SCHEDULE_DELAY = 1 hours;
     uint256 public constant MAX_PROFILE_NAME_LENGTH = 100;
     uint256 public constant MAX_AGREEMENT_TITLE_LENGTH = 200;
     uint256 public constant MAX_AGREEMENT_NOTES_LENGTH = 2_000;
@@ -223,7 +218,7 @@ contract LogisticsEscrow {
         }
         _requireMaximumLength(notes, MAX_AGREEMENT_NOTES_LENGTH);
         if (msg.value == 0) revert ZeroFunding();
-        if (deadline <= block.timestamp) {
+        if (deadline < block.timestamp + MIN_SCHEDULE_DELAY) {
             revert InvalidDeadline(deadline, uint64(block.timestamp));
         }
         if (milestoneNames.length != MAX_MILESTONES) {
@@ -239,17 +234,6 @@ contract LogisticsEscrow {
             keccak256(bytes(milestoneNames[0])) != keccak256("Cargo pickup") ||
             keccak256(bytes(milestoneNames[1])) != keccak256("Final delivery")
         ) revert FixedMilestonesRequired();
-
-        uint256 pickupPayout = (msg.value * PICKUP_PAYMENT_PERCENT) / 100;
-        uint256 deliveryPayout = msg.value - pickupPayout;
-        if (pickupPayout == 0) revert ZeroMilestonePayout(0);
-        if (deliveryPayout == 0) revert ZeroMilestonePayout(1);
-        if (payouts[0] != pickupPayout) {
-            revert InvalidMilestonePayout(0, pickupPayout, payouts[0]);
-        }
-        if (payouts[1] != deliveryPayout) {
-            revert InvalidMilestonePayout(1, deliveryPayout, payouts[1]);
-        }
 
         uint256 payoutTotal;
         uint64 previousDueDate = uint64(block.timestamp);
@@ -391,10 +375,8 @@ contract LogisticsEscrow {
             revert EvidenceHashMismatch(milestone.proofHash, expectedEvidenceHash);
         }
 
-        uint256 payout = milestoneIndex == 0
-            ? (agreement.totalAmount * PICKUP_PAYMENT_PERCENT) / 100
-            : agreement.remainingAmount;
-        if (payout != milestone.payout || payout > agreement.remainingAmount) {
+        uint256 payout = milestone.payout;
+        if (payout > agreement.remainingAmount) {
             revert InvalidStatus();
         }
 

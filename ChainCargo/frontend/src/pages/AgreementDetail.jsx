@@ -15,6 +15,7 @@ import {
   verifyEvidenceFromStorage,
 } from '../utils/evidenceStorage';
 import { getDeadlineState, isRefundButtonAvailable } from '../utils/deadlineAlerts';
+import { showActionResult } from '../utils/actionResult';
 import {
   decodeEscrowEvent,
   loadContractLogsInChunks,
@@ -197,11 +198,14 @@ function AgreementDetail() {
       const contract = await getWriteContract();
       const transaction = await callback(contract);
       await waitForTransaction(transaction);
+      showActionResult('success', 'The blockchain action completed successfully.');
       setVerification(null);
       setDisputeReason('');
       setResolutionEth('');
     } catch (actionError) {
-      setError(friendlyContractError(actionError));
+      const message = friendlyContractError(actionError);
+      setError(message);
+      showActionResult('error', message);
     } finally {
       setBusyAction('');
     }
@@ -246,9 +250,12 @@ function AgreementDetail() {
       setEvidenceFile(null);
       setUploadStatus('');
       if (evidenceFileInputRef.current) evidenceFileInputRef.current.value = '';
+      showActionResult('success', 'The photo or document was uploaded and its proof was submitted successfully.');
     } catch (uploadError) {
       setUploadStatus('');
-      setError(friendlyContractError(uploadError));
+      const message = friendlyContractError(uploadError);
+      setError(message);
+      showActionResult('error', message);
     } finally {
       setBusyAction('');
     }

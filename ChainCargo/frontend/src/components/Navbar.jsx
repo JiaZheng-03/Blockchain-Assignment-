@@ -1,11 +1,14 @@
 import { Link, NavLink } from 'react-router-dom';
 import WalletButton from './WalletButton';
+import NotificationButton from './NotificationButton';
 import { useWallet } from '../context/WalletContext';
 import { useProfile } from '../hooks/useProfile';
+import { useWalletBalance } from '../hooks/useWalletBalance';
 
 function Navbar() {
   const { account } = useWallet();
-  const { hasAppAccess, isArbitrator, isShipper, profile, roleLabel } = useProfile();
+  const { isArbitrator, profile, roleLabel } = useProfile();
+  const { displayBalance } = useWalletBalance();
 
   return (
     <header className="navbar">
@@ -14,19 +17,19 @@ function Navbar() {
       </Link>
       <nav className="nav-links">
         <NavLink to="/">Home</NavLink>
-        <NavLink to="/setup">Setup</NavLink>
-        {hasAppAccess && <NavLink to="/dashboard">{isArbitrator ? 'Arbitration' : 'Dashboard'}</NavLink>}
-        {isShipper && <NavLink to="/create-agreement">Create Agreement</NavLink>}
-        {account && !hasAppAccess && <NavLink to="/register">Register</NavLink>}
-        {account ? (
-          <span className={`badge role-badge role-${roleLabel.toLowerCase()}`}>
-            {isArbitrator
-              ? `Arbitrator · ${account.slice(0, 6)}...${account.slice(-4)}`
-              : profile
-                ? `${profile.roleLabel} · ${profile.name}`
-                : `${account.slice(0, 6)}...${account.slice(-4)}`}
+        {account && (
+          <NavLink className="navbar-profile" to="/profile">
+            <span>{isArbitrator ? 'Contract deployer' : profile?.name || 'Profile'}</span>
+            <small>{roleLabel}</small>
+          </NavLink>
+        )}
+        {account && (
+          <span className="navbar-balance">
+            <small>Balance</small>
+            <strong>{displayBalance}</strong>
           </span>
-        ) : null}
+        )}
+        <NotificationButton />
         <WalletButton />
       </nav>
     </header>

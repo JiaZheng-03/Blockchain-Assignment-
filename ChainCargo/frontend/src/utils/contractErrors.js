@@ -61,8 +61,6 @@ function describeCustomError(parsed) {
       return `Milestone ${index} cannot be later than the final deadline.`;
     case 'PayoutTotalMismatch':
       return 'Milestone payouts must exactly equal the deposited escrow amount.';
-    case 'InvalidMilestonePayout':
-      return `Milestone ${index} must use the fixed 30%/70% payment allocation.`;
     case 'InputTooLong':
       return `A text value is too long. The contract allows at most ${parsed.args.maximumLength} bytes.`;
     default:

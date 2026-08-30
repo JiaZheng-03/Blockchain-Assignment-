@@ -26,8 +26,8 @@ module.exports = {
   paths: {
     sources: "./contracts",
     tests: "./test",
-    cache: "./cache",
-    artifacts: "./artifacts",
+    cache: process.env.HARDHAT_CACHE || "./cache",
+    artifacts: process.env.HARDHAT_ARTIFACTS || "./artifacts",
   },
   networks: {
     localhost: {

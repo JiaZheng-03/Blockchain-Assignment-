@@ -8,7 +8,7 @@ export const EVIDENCE_MIME_TYPES = [
   'image/webp',
   'application/pdf',
 ];
-export const EVIDENCE_FILE_ACCEPT = EVIDENCE_MIME_TYPES.join(',');
+export const EVIDENCE_FILE_ACCEPT = `${EVIDENCE_MIME_TYPES.join(',')},.jpg,.jpeg,.png,.webp,.pdf`;
 export const SUPABASE_EVIDENCE_SCHEME = 'supabase://';
 
 const LEGACY_IPFS_GATEWAY = 'https://ipfs.io';
@@ -19,6 +19,22 @@ const MIME_TYPE_EXTENSIONS = {
   'application/pdf': '.pdf',
 };
 
+const FILE_EXTENSION_MIME_TYPES = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  pdf: 'application/pdf',
+};
+
+export function normalizeEvidenceMimeType({ name, type }) {
+  if (type === 'image/jpg') return 'image/jpeg';
+  if (EVIDENCE_MIME_TYPES.includes(type)) return type;
+  if (type && type !== 'application/octet-stream') return type;
+  const extension = String(name || '').split('.').pop()?.toLowerCase();
+  return FILE_EXTENSION_MIME_TYPES[extension] || type || '';
+}
+
 export function validateEvidenceFileMetadata({ name, size, type }) {
   if (!name || !Number.isInteger(size) || size <= 0) {
     throw new Error('Select a non-empty receipt, photo, or PDF document.');
@@ -26,7 +42,7 @@ export function validateEvidenceFileMetadata({ name, size, type }) {
   if (size > MAX_EVIDENCE_FILE_SIZE) {
     throw new Error('Evidence files must be 10 MB or smaller.');
   }
-  if (!EVIDENCE_MIME_TYPES.includes(type)) {
+  if (!EVIDENCE_MIME_TYPES.includes(normalizeEvidenceMimeType({ name, type }))) {
     throw new Error('Evidence must be a JPEG, PNG, WebP, or PDF file.');
   }
 }
@@ -178,13 +194,14 @@ export async function uploadEvidenceToSupabase({
   validateEvidenceFileMetadata(file);
   const timestamp = Date.now();
   const nonce = crypto.randomUUID();
+  const mimeType = normalizeEvidenceMimeType(file);
   const authorization = {
     account,
     agreementId: String(agreementId),
     contractAddress,
     fileName: file.name,
     fileSize: file.size,
-    mimeType: file.type,
+    mimeType,
     milestoneIndex,
     nonce,
     timestamp,
@@ -210,7 +227,10 @@ export async function uploadEvidenceToSupabase({
 
   const formData = new FormData();
   formData.append('cacheControl', '3600');
-  formData.append('', file, file.name);
+  const uploadFile = file.type === mimeType
+    ? file
+    : new File([file], file.name, { type: mimeType });
+  formData.append('', uploadFile, file.name);
   const uploadResponse = await fetch(signedUrl, {
     method: 'PUT',
     headers: { 'x-upsert': 'false' },

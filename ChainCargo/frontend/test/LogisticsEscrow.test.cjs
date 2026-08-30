@@ -21,14 +21,14 @@ describe("LogisticsEscrow", function () {
     escrow,
     shipper,
     carrier,
-    { title = "Port Klang delivery", total = "10" } = {},
+    { title = "Port Klang delivery", total = "10", pickupPercent = 30 } = {},
   ) {
     const now = await time.latest();
     const totalWei = ethers.parseEther(total);
-    const pickupPayout = (totalWei * 30n) / 100n;
+    const pickupPayout = (totalWei * BigInt(pickupPercent)) / 100n;
     const payouts = [pickupPayout, totalWei - pickupPayout];
-    const dueDates = [now + 1_800, now + 5_400];
-    const deadline = now + 7_200;
+    const dueDates = [now + 7_200, now + 10_800];
+    const deadline = now + 14_400;
     const tx = await escrow.connect(shipper).createAgreement(
       title,
       carrier.address,
@@ -67,7 +67,7 @@ describe("LogisticsEscrow", function () {
     expect(await escrow.agreementCount()).to.equal(2);
   });
 
-  it("enforces exactly two fixed milestones and the 30%/70% allocation", async function () {
+  it("enforces two named milestones whose payouts equal the escrow", async function () {
     const { escrow, shipper, carrier } = await deployFixture();
     const now = await time.latest();
     const total = ethers.parseEther("10");
@@ -76,12 +76,12 @@ describe("LogisticsEscrow", function () {
       escrow.connect(shipper).createAgreement(
         "Wrong count",
         carrier.address,
-        now + 7_200,
+        now + 14_400,
         "",
         ["Cargo pickup"],
         ["Pickup"],
         [total],
-        [now + 1_800],
+        [now + 7_200],
         { value: total },
       ),
     ).to.be.revertedWithCustomError(escrow, "InvalidMilestoneCount").withArgs(1);
@@ -90,30 +90,49 @@ describe("LogisticsEscrow", function () {
       escrow.connect(shipper).createAgreement(
         "Wrong names",
         carrier.address,
-        now + 7_200,
+        now + 14_400,
         "",
         ["Pickup", "Delivery"],
         ["Pickup", "Delivery"],
         [ethers.parseEther("3"), ethers.parseEther("7")],
-        [now + 1_800, now + 5_400],
+        [now + 7_200, now + 10_800],
         { value: total },
       ),
     ).to.be.revertedWithCustomError(escrow, "FixedMilestonesRequired");
 
     await expect(
       escrow.connect(shipper).createAgreement(
-        "Wrong allocation",
+        "Wrong total",
         carrier.address,
-        now + 7_200,
+        now + 14_400,
         "",
         ["Cargo pickup", "Final delivery"],
         ["Pickup", "Delivery"],
-        [ethers.parseEther("4"), ethers.parseEther("6")],
-        [now + 1_800, now + 5_400],
+        [ethers.parseEther("4"), ethers.parseEther("5")],
+        [now + 7_200, now + 10_800],
         { value: total },
       ),
-    ).to.be.revertedWithCustomError(escrow, "InvalidMilestonePayout")
-      .withArgs(0, ethers.parseEther("3"), ethers.parseEther("4"));
+    ).to.be.revertedWithCustomError(escrow, "PayoutTotalMismatch")
+      .withArgs(ethers.parseEther("9"), total);
+  });
+
+  it("stores and releases a Shipper-selected 40%/60% allocation", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    const { payouts } = await createAgreement(
+      escrow,
+      shipper,
+      carrier,
+      { pickupPercent: 40 },
+    );
+    const milestones = await escrow.getMilestones(0);
+    expect(milestones[0].payout).to.equal(payouts[0]);
+    expect(milestones[1].payout).to.equal(payouts[1]);
+
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("custom allocation evidence"));
+    await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
+    await expect(escrow.connect(shipper).confirmMilestone(0, 0, evidenceHash))
+      .to.emit(escrow, "MilestoneConfirmed")
+      .withArgs(0, 0, evidenceHash, shipper.address, payouts[0]);
   });
 
   it("allows the Carrier to submit the assignment evidence hash", async function () {
