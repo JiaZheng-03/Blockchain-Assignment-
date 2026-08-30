@@ -6,9 +6,10 @@ import { useProfile } from '../hooks/useProfile';
 
 const deploymentLabels = {
   checking: 'Checking contract…',
-  ready: 'Sepolia escrow contract detected',
-  missing: 'No contract at the configured Sepolia address',
-  unreachable: 'Sepolia RPC is currently unreachable',
+  ready: 'Current escrow contract detected',
+  outdated: 'The configured contract is outdated and must be redeployed',
+  missing: 'No contract at the configured address',
+  unreachable: 'The configured RPC is currently unreachable',
   'wrong-network': 'Switch network first',
   'not-configured': 'No contract address configured',
   'wallet-missing': 'Install MetaMask first',
@@ -38,10 +39,13 @@ function Setup() {
   } = useWallet();
   const {
     address,
+    blockExplorerUrl,
     checkDeployment,
     deploymentError,
     deploymentStatus,
+    expectedCurrencyName,
     expectedChainId,
+    expectedNetworkName,
     isCorrectNetwork,
     switchToExpectedNetwork,
   } = useContract();
@@ -65,13 +69,15 @@ function Setup() {
 
   const hasMetaMask = typeof window !== 'undefined' && Boolean(window.ethereum?.isMetaMask);
   const deploymentReady = deploymentStatus === 'ready';
+  const isLocalNetwork = expectedChainId === 31337;
+  const deploymentCommand = isLocalNetwork ? 'npm run deploy:local' : 'npm run deploy:sepolia';
   const setupComplete = isConnected && isCorrectNetwork && deploymentReady && hasAppAccess;
 
   return (
     <section className="setup-page">
       <div className="panel setup-intro">
-        <span className="eyebrow">Sepolia dApp readiness</span>
-        <h1>Connect MetaMask to Sepolia in four clear steps</h1>
+        <span className="eyebrow">Blockchain dApp readiness</span>
+        <h1>Connect MetaMask to {expectedNetworkName} in four clear steps</h1>
         <p>
           Complete this checklist once, then test the full Shipper → Carrier → Shipper
           milestone payout flow with two MetaMask accounts.
@@ -103,27 +109,27 @@ function Setup() {
           )}
         </ChecklistItem>
 
-        <ChecklistItem complete={isConnected && isCorrectNetwork} number="2" title="Use Sepolia Testnet">
-          <p>Expected chain: <strong>{expectedChainId}</strong> · Currency: <strong>Sepolia ETH</strong></p>
+        <ChecklistItem complete={isConnected && isCorrectNetwork} number="2" title={`Use ${expectedNetworkName}`}>
+          <p>Expected chain: <strong>{expectedChainId}</strong> · Currency: <strong>{expectedCurrencyName}</strong></p>
           {isConnected && !isCorrectNetwork && (
             <button
               className="btn btn-primary"
               onClick={() => perform(switchToExpectedNetwork)}
               type="button"
             >
-              Switch MetaMask to Sepolia
+              Switch MetaMask to {expectedNetworkName}
             </button>
           )}
         </ChecklistItem>
 
-        <ChecklistItem complete={deploymentReady} number="3" title="Use the Sepolia escrow deployment">
+        <ChecklistItem complete={deploymentReady} number="3" title={`Use the ${expectedNetworkName} escrow deployment`}>
           <p>{deploymentLabels[deploymentStatus] || deploymentStatus}</p>
-          {!deploymentReady && <code className="command-line">npm run deploy:sepolia</code>}
-          <small>The deployer wallet needs Sepolia ETH for gas. Never commit its private key.</small>
+          {!deploymentReady && <code className="command-line">{deploymentCommand}</code>}
+          <small>The deployer wallet needs network ETH for gas. Never commit its private key.</small>
           <small>Configured contract: {address || 'none'}</small>
-          {deploymentReady && (
-            <a href={`https://sepolia.etherscan.io/address/${address}`} target="_blank" rel="noreferrer">
-              View contract on Sepolia Etherscan
+          {deploymentReady && blockExplorerUrl && (
+            <a href={`${blockExplorerUrl}/address/${address}`} target="_blank" rel="noreferrer">
+              View contract in the block explorer
             </a>
           )}
           {isConnected && isCorrectNetwork && !deploymentReady && (

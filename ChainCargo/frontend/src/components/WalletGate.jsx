@@ -11,6 +11,8 @@ function WalletGate() {
   } = useWallet();
   const {
     deploymentStatus,
+    expectedChainId,
+    expectedNetworkName,
     isCorrectNetwork,
     switchToExpectedNetwork,
   } = useContract();
@@ -33,8 +35,8 @@ function WalletGate() {
     return (
       <div className="panel access-panel">
         <span className="eyebrow">Network required</span>
-        <h2>Switch MetaMask to Sepolia</h2>
-        <p>ChainCargo’s coursework contract runs on Sepolia testnet, chain 11155111.</p>
+        <h2>Switch MetaMask to {expectedNetworkName}</h2>
+        <p>The configured ChainCargo contract runs on chain {expectedChainId}.</p>
         <button className="btn btn-primary" onClick={switchToExpectedNetwork} type="button">
           Switch network
         </button>
@@ -49,9 +51,9 @@ function WalletGate() {
   if (deploymentStatus !== 'ready') {
     return (
       <div className="panel access-panel">
-        <span className="eyebrow">Sepolia contract required</span>
-        <h2>Deploy ChainCargo to Sepolia first</h2>
-        <p>The configured Sepolia address does not contain the escrow contract.</p>
+        <span className="eyebrow">Contract deployment required</span>
+        <h2>Deploy ChainCargo to {expectedNetworkName} first</h2>
+        <p>The configured address does not contain the current escrow contract.</p>
         <Link className="btn btn-primary" to="/setup">Open setup checklist</Link>
       </div>
     );

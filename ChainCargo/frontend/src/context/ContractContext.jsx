@@ -17,6 +17,7 @@ export { friendlyContractError } from '../utils/contractErrors';
 
 const ContractContext = createContext(null);
 const DEFAULT_CHAIN_ID = SEPOLIA_NETWORK.chainId;
+const REQUIRED_CONTRACT_VERSION = 2;
 
 export function ContractProvider({ children }) {
   const { account, chainId, isConnected } = useWallet();
@@ -24,6 +25,14 @@ export function ContractProvider({ children }) {
   const [deploymentStatus, setDeploymentStatus] = useState('checking');
   const [deploymentError, setDeploymentError] = useState('');
   const expectedChainId = Number(import.meta.env.VITE_ESCROW_CHAIN_ID || DEFAULT_CHAIN_ID);
+  const targetNetwork = expectedChainId === SEPOLIA_NETWORK.chainId
+    ? SEPOLIA_NETWORK
+    : expectedChainId === HARDHAT_LOCAL_NETWORK.chainId
+      ? HARDHAT_LOCAL_NETWORK
+      : null;
+  const expectedNetworkName = targetNetwork?.chainName || `Chain ${expectedChainId}`;
+  const expectedCurrencyName = targetNetwork?.nativeCurrency?.name || 'Ether';
+  const blockExplorerUrl = targetNetwork?.blockExplorerUrls?.[0] || '';
   const deployment = selectDeploymentForChain(
     expectedChainId,
     sepoliaDeployment,
@@ -56,7 +65,16 @@ export function ContractProvider({ children }) {
       setDeploymentStatus('checking');
       const provider = new ethers.BrowserProvider(window.ethereum);
       const code = await provider.getCode(address);
-      const nextStatus = code === '0x' ? 'missing' : 'ready';
+      let nextStatus = code === '0x' ? 'missing' : 'ready';
+      if (nextStatus === 'ready') {
+        try {
+          const contract = new ethers.Contract(address, ESCROW_ABI, provider);
+          const version = Number(await contract.CONTRACT_VERSION());
+          if (version < REQUIRED_CONTRACT_VERSION) nextStatus = 'outdated';
+        } catch {
+          nextStatus = 'outdated';
+        }
+      }
       setDeploymentStatus(nextStatus);
       return nextStatus;
     } catch (error) {
@@ -76,14 +94,9 @@ export function ContractProvider({ children }) {
 
   const switchToExpectedNetwork = useCallback(async () => {
     if (!expectedChainId) throw new Error('No target chain is configured.');
-    const network = expectedChainId === SEPOLIA_NETWORK.chainId
-      ? SEPOLIA_NETWORK
-      : expectedChainId === HARDHAT_LOCAL_NETWORK.chainId
-        ? HARDHAT_LOCAL_NETWORK
-        : null;
-    await switchWalletNetwork(window.ethereum, expectedChainId, network);
+    await switchWalletNetwork(window.ethereum, expectedChainId, targetNetwork);
     setRefreshKey((current) => current + 1);
-  }, [expectedChainId]);
+  }, [expectedChainId, targetNetwork]);
 
   const getReadContract = useCallback(async () => {
     if (!isConfigured) {
@@ -104,7 +117,14 @@ export function ContractProvider({ children }) {
         `No escrow contract exists at the configured address on chain ${expectedChainId}.`,
       );
     }
-    return new ethers.Contract(address, ESCROW_ABI, provider);
+    const contract = new ethers.Contract(address, ESCROW_ABI, provider);
+    try {
+      const version = Number(await contract.CONTRACT_VERSION());
+      if (version < REQUIRED_CONTRACT_VERSION) throw new Error('outdated');
+    } catch {
+      throw new Error('The configured contract is outdated. Redeploy it before using this application.');
+    }
+    return contract;
   }, [address, expectedChainId, isConfigured]);
 
   const getWriteContract = useCallback(async () => {
@@ -123,8 +143,11 @@ export function ContractProvider({ children }) {
   const value = useMemo(
     () => ({
       address,
+      blockExplorerUrl,
       deployment,
+      expectedCurrencyName,
       expectedChainId,
+      expectedNetworkName,
       isCorrectNetwork,
       isConfigured,
       deploymentError,
@@ -138,11 +161,14 @@ export function ContractProvider({ children }) {
     }),
     [
       address,
+      blockExplorerUrl,
       checkDeployment,
       deployment,
       deploymentError,
       deploymentStatus,
+      expectedCurrencyName,
       expectedChainId,
+      expectedNetworkName,
       getReadContract,
       getWriteContract,
       isConfigured,

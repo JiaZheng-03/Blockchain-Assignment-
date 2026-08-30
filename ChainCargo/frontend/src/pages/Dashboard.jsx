@@ -171,7 +171,7 @@ function Dashboard() {
                 ? 'The deployment wallet can divide the remaining escrow only after a Shipper or Carrier opens a dispute.'
                 : isShipper
                 ? 'Shippers create agreements, choose a registered carrier, and fund milestone escrow.'
-                : 'Carriers do not create or fund agreements. A shipper assigns your wallet; you then submit milestone evidence and receive approved payouts.'}
+                : 'Carriers do not create, fund, or confirm agreements. A Shipper assigns your wallet; you submit milestone evidence and receive confirmed payouts.'}
             </p>
           </div>
           <div className="role-actions">

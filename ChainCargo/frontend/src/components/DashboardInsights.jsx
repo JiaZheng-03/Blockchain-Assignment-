@@ -100,7 +100,7 @@ function DashboardInsights({ agreements, carrierReputation, isArbitrator, isCarr
             <>
               <div className="workflow-summary-grid">
                 <div><strong>{metrics.pendingEvidenceCount}</strong><span>Waiting for evidence</span></div>
-                <div><strong>{metrics.awaitingApprovalCount}</strong><span>Waiting for approval</span></div>
+                <div><strong>{metrics.awaitingApprovalCount}</strong><span>Waiting for confirmation</span></div>
                 <div className="deadline-safe"><strong>{metrics.deadlineCounts.safe}</strong><span>More than 24h</span></div>
                 <div className="deadline-warning"><strong>{metrics.deadlineCounts.warning}</strong><span>Under 24h</span></div>
                 <div className="deadline-critical"><strong>{metrics.deadlineCounts.critical}</strong><span>Under 1h</span></div>

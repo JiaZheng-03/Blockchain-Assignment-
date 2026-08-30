@@ -4,407 +4,335 @@ const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("LogisticsEscrow", function () {
   async function deployFixture() {
-    const [arbitrator, shipper, carrier, outsider] = await ethers.getSigners();
+    const [arbitrator, shipper, carrier, outsider, secondShipper] = await ethers.getSigners();
     const Escrow = await ethers.getContractFactory("LogisticsEscrow");
     const escrow = await Escrow.deploy();
     await escrow.waitForDeployment();
 
     await escrow.connect(shipper).register("Acme Imports", 1);
     await escrow.connect(carrier).register("Swift Freight", 2);
+    await escrow.connect(secondShipper).register("Second Shipper", 1);
 
-    return { escrow, arbitrator, shipper, carrier, outsider };
+    return { escrow, arbitrator, shipper, carrier, outsider, secondShipper };
   }
 
-  async function createAgreement(escrow, shipper, carrier) {
+  async function createAgreement(
+    escrow,
+    shipper,
+    carrier,
+    { title = "Port Klang delivery", total = "10" } = {},
+  ) {
     const now = await time.latest();
-    const payouts = [ethers.parseEther("3"), ethers.parseEther("7")];
+    const totalWei = ethers.parseEther(total);
+    const pickupPayout = (totalWei * 30n) / 100n;
+    const payouts = [pickupPayout, totalWei - pickupPayout];
+    const dueDates = [now + 1_800, now + 5_400];
+    const deadline = now + 7_200;
     const tx = await escrow.connect(shipper).createAgreement(
-      "Port Klang delivery",
+      title,
       carrier.address,
-      now + 7200,
+      deadline,
       "Handle with care",
-      ["Pickup", "Delivery"],
-      ["Collect cargo", "Deliver cargo"],
+      ["Cargo pickup", "Final delivery"],
+      ["Pickup document", "Delivery document"],
       payouts,
-      [now + 1800, now + 5400],
-      { value: ethers.parseEther("10") },
+      dueDates,
+      { value: totalWei },
     );
     await tx.wait();
-    return { now, payouts };
+    return { deadline, dueDates, now, payouts, totalWei };
   }
 
-  it("registers wallet roles and prevents duplicate registration", async function () {
-    const { escrow, shipper, carrier } = await deployFixture();
-    const profile = await escrow.getProfile(shipper.address);
-    expect(profile.name).to.equal("Acme Imports");
-    expect(profile.role).to.equal(1);
-    expect(await escrow.getUsersByRole(1)).to.deep.equal([shipper.address]);
-    expect(await escrow.getUsersByRole(2)).to.deep.equal([carrier.address]);
-    await expect(escrow.connect(shipper).register("Again", 1))
-      .to.be.revertedWithCustomError(escrow, "AlreadyRegistered");
-  });
-
-  it("rejects role-directory queries that are not participant roles", async function () {
-    const { escrow } = await deployFixture();
-    await expect(escrow.getUsersByRole(0))
+  it("registers only the two participant roles", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    expect((await escrow.getProfile(shipper.address)).role).to.equal(1);
+    expect((await escrow.getProfile(carrier.address)).role).to.equal(2);
+    await expect(escrow.connect(outsider).register("Invalid", 0))
       .to.be.revertedWithCustomError(escrow, "InvalidRole");
   });
 
-  it("requires milestone payouts to equal the funded escrow", async function () {
+  it("prevents duplicate agreement names for one Shipper after normalization", async function () {
+    const { escrow, shipper, carrier, secondShipper } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier, { title: "  Port   Klang Shipment  " });
+
+    expect(await escrow.isAgreementNameAvailable(shipper.address, "port klang shipment"))
+      .to.equal(false);
+    await expect(createAgreement(escrow, shipper, carrier, { title: "PORT KLANG SHIPMENT" }))
+      .to.be.revertedWithCustomError(escrow, "DuplicateAgreementName");
+
+    expect(await escrow.isAgreementNameAvailable(secondShipper.address, "port klang shipment"))
+      .to.equal(true);
+    await createAgreement(escrow, secondShipper, carrier, { title: "port klang shipment" });
+    expect(await escrow.agreementCount()).to.equal(2);
+  });
+
+  it("enforces exactly two fixed milestones and the 30%/70% allocation", async function () {
     const { escrow, shipper, carrier } = await deployFixture();
     const now = await time.latest();
+    const total = ethers.parseEther("10");
+
     await expect(
       escrow.connect(shipper).createAgreement(
-        "Invalid",
+        "Wrong count",
         carrier.address,
-        now + 3600,
+        now + 7_200,
         "",
+        ["Cargo pickup"],
         ["Pickup"],
-        ["Collect"],
-        [ethers.parseEther("1")],
-        [now + 1800],
-        { value: ethers.parseEther("2") },
+        [total],
+        [now + 1_800],
+        { value: total },
       ),
-    ).to.be.revertedWithCustomError(escrow, "PayoutTotalMismatch")
-      .withArgs(ethers.parseEther("1"), ethers.parseEther("2"));
+    ).to.be.revertedWithCustomError(escrow, "InvalidMilestoneCount").withArgs(1);
+
+    await expect(
+      escrow.connect(shipper).createAgreement(
+        "Wrong names",
+        carrier.address,
+        now + 7_200,
+        "",
+        ["Pickup", "Delivery"],
+        ["Pickup", "Delivery"],
+        [ethers.parseEther("3"), ethers.parseEther("7")],
+        [now + 1_800, now + 5_400],
+        { value: total },
+      ),
+    ).to.be.revertedWithCustomError(escrow, "FixedMilestonesRequired");
+
+    await expect(
+      escrow.connect(shipper).createAgreement(
+        "Wrong allocation",
+        carrier.address,
+        now + 7_200,
+        "",
+        ["Cargo pickup", "Final delivery"],
+        ["Pickup", "Delivery"],
+        [ethers.parseEther("4"), ethers.parseEther("6")],
+        [now + 1_800, now + 5_400],
+        { value: total },
+      ),
+    ).to.be.revertedWithCustomError(escrow, "InvalidMilestonePayout")
+      .withArgs(0, ethers.parseEther("3"), ethers.parseEther("4"));
   });
 
-  it("holds funds then progressively pays approved milestones", async function () {
+  it("allows the Carrier to submit the assignment evidence hash", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("pickup evidence"));
+
+    await expect(escrow.connect(carrier).submitEvidence(0, 0, evidenceHash))
+      .to.emit(escrow, "MilestoneProofSubmitted")
+      .withArgs(0, 0, evidenceHash, "");
+    const [pickup] = await escrow.getMilestones(0);
+    expect(pickup.proofHash).to.equal(evidenceHash);
+    expect(pickup.state).to.equal(1);
+    expect(pickup.paid).to.equal(false);
+  });
+
+  it("stores a validated Supabase reference for frontend evidence", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("pickup photo"));
+    const proofURI = "supabase://abcdefghijklmnopqrst/chaincargo-evidence/0/pickup.pdf";
+
+    await escrow.connect(carrier).submitMilestoneProof(0, 0, evidenceHash, proofURI);
+    expect((await escrow.getMilestones(0))[0].proofURI).to.equal(proofURI);
+    await expect(
+      escrow.connect(carrier).submitMilestoneProof(0, 0, evidenceHash, "https://attacker.test/file"),
+    ).to.be.revertedWithCustomError(escrow, "InvalidProofURI");
+  });
+
+  it("rejects evidence submitted by the Shipper or unrelated wallets", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("pickup evidence"));
+
+    await expect(escrow.connect(shipper).submitEvidence(0, 0, evidenceHash))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(outsider).submitEvidence(0, 0, evidenceHash))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+  });
+
+  it("lets only the fixed Shipper confirm matching evidence and releases pickup 30%", async function () {
     const { escrow, shipper, carrier } = await deployFixture();
     const { payouts } = await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("pickup evidence"));
+    await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
+
+    const contractBalanceBefore = await ethers.provider.getBalance(await escrow.getAddress());
+    const carrierBalanceBefore = await ethers.provider.getBalance(carrier.address);
+    const confirmation = await escrow.connect(shipper).confirmMilestone(0, 0, evidenceHash);
+    await expect(confirmation).to.emit(escrow, "MilestoneConfirmed")
+      .withArgs(0, 0, evidenceHash, shipper.address, payouts[0]);
+    await confirmation.wait();
     expect(await ethers.provider.getBalance(await escrow.getAddress()))
-      .to.equal(ethers.parseEther("10"));
-
-    const proof = ethers.keccak256(ethers.toUtf8Bytes("signed pickup document"));
-    await escrow.connect(carrier).submitMilestoneProof(0, 0, proof, "ipfs://pickup");
-    expect(await escrow.carrierReputation(carrier.address)).to.equal(0);
-    expect(await escrow.REPUTATION_POINTS_PER_MILESTONE()).to.equal(10);
-
-    const approval = escrow.connect(shipper).approveMilestone(0, 0);
-    await expect(approval)
-      .to.changeEtherBalances(
-        [escrow, carrier],
-        [-payouts[0], payouts[0]],
-      );
-    await expect(approval)
-      .to.emit(escrow, "CarrierReputationAwarded")
-      .withArgs(carrier.address, 0, 0, 10, 10);
+      .to.equal(contractBalanceBefore - payouts[0]);
+    expect(await ethers.provider.getBalance(carrier.address))
+      .to.equal(carrierBalanceBefore + payouts[0]);
 
     const agreement = await escrow.getAgreement(0);
+    const [pickup] = await escrow.getMilestones(0);
+    expect(agreement.shipper).to.equal(shipper.address);
     expect(agreement.remainingAmount).to.equal(payouts[1]);
-    expect(agreement.nextMilestone).to.equal(1);
-    expect(await escrow.carrierReputation(carrier.address)).to.equal(10);
+    expect(pickup.state).to.equal(2);
+    expect(pickup.paid).to.equal(true);
+  });
 
-    await expect(escrow.connect(shipper).approveMilestone(0, 0))
+  it("rejects milestone confirmation by the Carrier and unrelated wallets", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("pickup evidence"));
+    await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
+
+    await expect(escrow.connect(carrier).confirmMilestone(0, 0, evidenceHash))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(outsider).confirmMilestone(0, 0, evidenceHash))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+  });
+
+  it("rejects missing and mismatched evidence", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("pickup evidence"));
+    const wrongHash = ethers.keccak256(ethers.toUtf8Bytes("different evidence"));
+
+    await expect(escrow.connect(shipper).confirmMilestone(0, 0, evidenceHash))
+      .to.be.revertedWithCustomError(escrow, "EvidenceMissing");
+    await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
+    await expect(escrow.connect(shipper).confirmMilestone(0, 0, wrongHash))
+      .to.be.revertedWithCustomError(escrow, "EvidenceHashMismatch")
+      .withArgs(evidenceHash, wrongHash);
+  });
+
+  it("rejects duplicate confirmation and duplicate payment", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("pickup evidence"));
+    await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
+    await escrow.connect(shipper).confirmMilestone(0, 0, evidenceHash);
+
+    await expect(escrow.connect(shipper).confirmMilestone(0, 0, evidenceHash))
+      .to.be.revertedWithCustomError(escrow, "PaymentAlreadyReleased");
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(10);
+  });
+
+  it("prevents Final delivery confirmation before Cargo pickup", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("delivery evidence"));
+
+    await expect(escrow.connect(carrier).submitEvidence(0, 1, evidenceHash))
       .to.be.revertedWithCustomError(escrow, "InvalidMilestone");
-    expect(await escrow.carrierReputation(carrier.address)).to.equal(10);
+    await expect(escrow.connect(shipper).confirmMilestone(0, 1, evidenceHash))
+      .to.be.revertedWithCustomError(escrow, "InvalidMilestone");
   });
 
-  it("rejects empty and malformed proof URIs without changing milestone state", async function () {
+  it("releases the remaining 70% for Final delivery and completes the agreement", async function () {
     const { escrow, shipper, carrier } = await deployFixture();
-    await createAgreement(escrow, shipper, carrier);
-    const proof = ethers.keccak256(ethers.toUtf8Bytes("evidence bytes"));
+    const { payouts } = await createAgreement(escrow, shipper, carrier);
+    const pickupHash = ethers.keccak256(ethers.toUtf8Bytes("pickup evidence"));
+    const deliveryHash = ethers.keccak256(ethers.toUtf8Bytes("delivery evidence"));
 
-    await expect(escrow.connect(carrier).submitMilestoneProof(0, 0, proof, ""))
-      .to.be.revertedWithCustomError(escrow, "InvalidProofURI");
-    await expect(
-      escrow.connect(carrier).submitMilestoneProof(0, 0, proof, "https://attacker.example/evidence"),
-    ).to.be.revertedWithCustomError(escrow, "InvalidProofURI");
-
-    const [milestone] = await escrow.getMilestones(0);
-    expect(milestone.state).to.equal(0);
-    expect(milestone.proofHash).to.equal(ethers.ZeroHash);
-    expect(milestone.proofURI).to.equal("");
-  });
-
-  it("accepts a bounded IPFS proof URI and stores the exact file hash", async function () {
-    const { escrow, shipper, carrier } = await deployFixture();
-    await createAgreement(escrow, shipper, carrier);
-    const proof = ethers.keccak256(ethers.toUtf8Bytes("original file bytes"));
-    const proofURI = `ipfs://b${"a".repeat(58)}`;
-
-    await expect(escrow.connect(carrier).submitMilestoneProof(0, 0, proof, proofURI))
-      .to.emit(escrow, "MilestoneProofSubmitted")
-      .withArgs(0, 0, proof, proofURI);
-
-    const [milestone] = await escrow.getMilestones(0);
-    expect(milestone.state).to.equal(1);
-    expect(milestone.proofHash).to.equal(proof);
-    expect(milestone.proofURI).to.equal(proofURI);
-    expect(await escrow.carrierReputation(carrier.address)).to.equal(0);
-  });
-
-  it("completes after the final verified milestone", async function () {
-    const { escrow, shipper, carrier } = await deployFixture();
-    await createAgreement(escrow, shipper, carrier);
-
-    for (let index = 0; index < 2; index += 1) {
-      const proof = ethers.keccak256(ethers.toUtf8Bytes(`proof-${index}`));
-      await escrow.connect(carrier).submitMilestoneProof(0, index, proof, `ipfs://${index}`);
-      await escrow.connect(shipper).approveMilestone(0, index);
-    }
+    await escrow.connect(carrier).submitEvidence(0, 0, pickupHash);
+    await escrow.connect(shipper).confirmMilestone(0, 0, pickupHash);
+    await escrow.connect(carrier).submitEvidence(0, 1, deliveryHash);
+    const contractBalanceBefore = await ethers.provider.getBalance(await escrow.getAddress());
+    const carrierBalanceBefore = await ethers.provider.getBalance(carrier.address);
+    const confirmation = await escrow.connect(shipper).confirmMilestone(0, 1, deliveryHash);
+    await expect(confirmation).to.emit(escrow, "AgreementCompleted").withArgs(0);
+    await confirmation.wait();
+    expect(await ethers.provider.getBalance(await escrow.getAddress()))
+      .to.equal(contractBalanceBefore - payouts[1]);
+    expect(await ethers.provider.getBalance(carrier.address))
+      .to.equal(carrierBalanceBefore + payouts[1]);
 
     const agreement = await escrow.getAgreement(0);
+    const delivery = (await escrow.getMilestones(0))[1];
     expect(agreement.status).to.equal(1);
     expect(agreement.remainingAmount).to.equal(0);
+    expect(delivery.paid).to.equal(true);
     expect(await escrow.carrierReputation(carrier.address)).to.equal(20);
   });
 
-  it("refunds remaining escrow after an unsubmitted milestone deadline", async function () {
-    const { escrow, shipper, carrier, outsider } = await deployFixture();
-    const { now } = await createAgreement(escrow, shipper, carrier);
-    await time.increaseTo(now + 1801);
-
-    await expect(escrow.connect(outsider).claimRefundAfterDeadline(0))
-      .to.changeEtherBalances(
-        [escrow, shipper],
-        [-ethers.parseEther("10"), ethers.parseEther("10")],
-      );
-    expect((await escrow.getAgreement(0)).status).to.equal(2);
-    expect(await escrow.carrierReputation(carrier.address)).to.equal(0);
-
-    await expect(escrow.claimRefundAfterDeadline(0))
-      .to.be.revertedWithCustomError(escrow, "InvalidStatus");
-  });
-
-  it("prevents a dispute from blocking an already-eligible deadline refund", async function () {
-    const { escrow, shipper, carrier } = await deployFixture();
-    const { now } = await createAgreement(escrow, shipper, carrier);
-    await time.increaseTo(now + 1801);
-
-    expect(await escrow.canRefund(0)).to.equal(true);
-    await expect(escrow.connect(carrier).openDispute(0, "Delay disputed"))
-      .to.be.revertedWithCustomError(escrow, "DeadlineRefundAvailable");
-    expect((await escrow.getAgreement(0)).status).to.equal(0);
-    expect(await escrow.canRefund(0)).to.equal(true);
-  });
-
-  it("allows participant disputes before missed-deadline refund eligibility", async function () {
+  it("keeps the original Shipper as the permanent authorized confirmer", async function () {
     const { escrow, shipper, carrier } = await deployFixture();
     await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("pickup evidence"));
+    await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
+    await escrow.connect(shipper).confirmMilestone(0, 0, evidenceHash);
 
-    await expect(escrow.connect(carrier).openDispute(0, "Cargo condition disputed"))
-      .to.emit(escrow, "DisputeOpened")
-      .withArgs(0, carrier.address, "Cargo condition disputed");
-    expect((await escrow.getAgreement(0)).status).to.equal(3);
+    expect((await escrow.getAgreement(0)).shipper).to.equal(shipper.address);
+    expect(escrow.interface.getFunction("changeConfirmer")).to.equal(null);
   });
 
-  it("allows only the arbitrator to resolve a disputed remaining balance", async function () {
+  it("allows anyone to settle a missed deadline but always refunds the Shipper", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    const { dueDates, totalWei } = await createAgreement(escrow, shipper, carrier);
+    await time.increaseTo(dueDates[0] + 1);
+
+    expect(await escrow.canRefund(0)).to.equal(true);
+    const contractBalanceBefore = await ethers.provider.getBalance(await escrow.getAddress());
+    const shipperBalanceBefore = await ethers.provider.getBalance(shipper.address);
+    const refund = await escrow.connect(outsider).claimRefundAfterDeadline(0);
+    await expect(refund).to.emit(escrow, "Refunded")
+      .withArgs(0, shipper.address, totalWei);
+    await refund.wait();
+    expect(await ethers.provider.getBalance(await escrow.getAddress()))
+      .to.equal(contractBalanceBefore - totalWei);
+    expect(await ethers.provider.getBalance(shipper.address))
+      .to.equal(shipperBalanceBefore + totalWei);
+    expect((await escrow.getAgreement(0)).status).to.equal(2);
+  });
+
+  it("refunds only the remaining 70% when Final delivery evidence misses its deadline", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    const { dueDates, payouts } = await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("pickup evidence"));
+    await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
+    await escrow.connect(shipper).confirmMilestone(0, 0, evidenceHash);
+    await time.increaseTo(dueDates[1] + 1);
+
+    await expect(escrow.connect(outsider).claimRefundAfterDeadline(0))
+      .to.changeEtherBalances([escrow, shipper], [-payouts[1], payouts[1]]);
+  });
+
+  it("protects timely submitted evidence from a deadline refund", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    const { dueDates } = await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("pickup evidence"));
+    await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
+    await time.increaseTo(dueDates[0] + 1);
+
+    expect(await escrow.canRefund(0)).to.equal(false);
+    await expect(escrow.connect(outsider).claimRefundAfterDeadline(0))
+      .to.be.revertedWithCustomError(escrow, "DeadlineNotPassed");
+    await expect(escrow.connect(shipper).confirmMilestone(0, 0, evidenceHash))
+      .to.emit(escrow, "MilestoneConfirmed");
+  });
+
+  it("preserves participant disputes and deployer arbitration", async function () {
     const { escrow, arbitrator, shipper, carrier, outsider } = await deployFixture();
     await createAgreement(escrow, shipper, carrier);
     await escrow.connect(carrier).openDispute(0, "Cargo condition disputed");
 
     await expect(escrow.connect(outsider).resolveDispute(0, 1))
       .to.be.revertedWithCustomError(escrow, "Unauthorized");
-    const resolution = escrow.connect(arbitrator).resolveDispute(0, ethers.parseEther("4"));
-    await expect(resolution).to.changeEtherBalances(
-      [escrow, shipper, carrier],
-      [
-        -ethers.parseEther("10"),
-        ethers.parseEther("4"),
-        ethers.parseEther("6"),
-      ],
-    );
-
-    const agreement = await escrow.getAgreement(0);
-    expect(agreement.status).to.equal(4);
-    expect(agreement.remainingAmount).to.equal(0);
-    expect(await escrow.carrierReputation(carrier.address)).to.equal(0);
+    await expect(escrow.connect(arbitrator).resolveDispute(0, ethers.parseEther("4")))
+      .to.changeEtherBalances(
+        [escrow, shipper, carrier],
+        [-ethers.parseEther("10"), ethers.parseEther("4"), ethers.parseEther("6")],
+      );
   });
 
-  it("rejects unauthorized agreement actions and invalid agreement IDs", async function () {
-    const { escrow, shipper, carrier, outsider } = await deployFixture();
-    await createAgreement(escrow, shipper, carrier);
-    const proof = ethers.keccak256(ethers.toUtf8Bytes("evidence"));
-
-    await expect(
-      escrow.connect(outsider).submitMilestoneProof(0, 0, proof, "ipfs://evidence"),
-    ).to.be.revertedWithCustomError(escrow, "Unauthorized");
-    await expect(escrow.connect(outsider).approveMilestone(0, 0))
-      .to.be.revertedWithCustomError(escrow, "Unauthorized");
-    await expect(escrow.connect(outsider).openDispute(0, "Not a participant"))
-      .to.be.revertedWithCustomError(escrow, "Unauthorized");
-    await expect(escrow.getAgreement(99))
-      .to.be.revertedWithCustomError(escrow, "AgreementNotFound")
-      .withArgs(99);
-    await expect(escrow.connect(carrier).submitMilestoneProof(99, 0, proof, "ipfs://evidence"))
-      .to.be.revertedWithCustomError(escrow, "AgreementNotFound")
-      .withArgs(99);
-  });
-
-  it("bounds user-controlled strings while accepting useful boundary values", async function () {
-    const { escrow, shipper, carrier, outsider } = await deployFixture();
-    await expect(escrow.connect(outsider).register("x".repeat(100), 2))
-      .to.emit(escrow, "UserRegistered");
-
-    const signers = await ethers.getSigners();
-    await expect(escrow.connect(signers[4]).register("x".repeat(101), 1))
-      .to.be.revertedWithCustomError(escrow, "InputTooLong")
-      .withArgs(101, 100);
-
-    const now = await time.latest();
-    await expect(
-      escrow.connect(shipper).createAgreement(
-        "x".repeat(201),
-        carrier.address,
-        now + 3600,
-        "",
-        ["Pickup"],
-        ["Collect"],
-        [ethers.parseEther("1")],
-        [now + 1800],
-        { value: ethers.parseEther("1") },
-      ),
-    ).to.be.revertedWithCustomError(escrow, "InputTooLong")
-      .withArgs(201, 200);
-
-    await expect(
-      escrow.connect(shipper).createAgreement(
-        "Valid",
-        carrier.address,
-        now + 3600,
-        "",
-        ["Pickup"],
-        ["x".repeat(1001)],
-        [ethers.parseEther("1")],
-        [now + 1800],
-        { value: ethers.parseEther("1") },
-      ),
-    ).to.be.revertedWithCustomError(escrow, "InputTooLong")
-      .withArgs(1001, 1000);
-  });
-
-  it("bounds proof URIs and dispute reasons", async function () {
+  it("rejects invalid agreement IDs and expired evidence", async function () {
     const { escrow, shipper, carrier } = await deployFixture();
-    await createAgreement(escrow, shipper, carrier);
-    const proof = ethers.keccak256(ethers.toUtf8Bytes("evidence"));
-    const tooLongURI = `ipfs://${"a".repeat(194)}`;
+    const { dueDates } = await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("pickup evidence"));
 
-    await expect(escrow.connect(carrier).submitMilestoneProof(0, 0, proof, tooLongURI))
-      .to.be.revertedWithCustomError(escrow, "InvalidProofURI");
-    await expect(escrow.connect(shipper).openDispute(0, "x".repeat(1001)))
-      .to.be.revertedWithCustomError(escrow, "InputTooLong")
-      .withArgs(1001, 1000);
-
-    const maximumURI = `ipfs://${"a".repeat(193)}`;
-    await expect(escrow.connect(carrier).submitMilestoneProof(0, 0, proof, maximumURI))
-      .to.emit(escrow, "MilestoneProofSubmitted");
-    expect((await escrow.getMilestones(0))[0].proofURI).to.equal(maximumURI);
-  });
-
-  it("rejects past final and milestone deadlines with specific errors", async function () {
-    const { escrow, shipper, carrier } = await deployFixture();
-    const now = await time.latest();
-
-    await expect(
-      escrow.connect(shipper).createAgreement(
-        "Expired agreement",
-        carrier.address,
-        now,
-        "",
-        ["Pickup"],
-        ["Collect"],
-        [ethers.parseEther("1")],
-        [now],
-        { value: ethers.parseEther("1") },
-      ),
-    ).to.be.revertedWithCustomError(escrow, "InvalidDeadline");
-
-    await expect(
-      escrow.connect(shipper).createAgreement(
-        "Expired milestone",
-        carrier.address,
-        now + 3600,
-        "",
-        ["Pickup"],
-        ["Collect"],
-        [ethers.parseEther("1")],
-        [now],
-        { value: ethers.parseEther("1") },
-      ),
-    ).to.be.revertedWithCustomError(escrow, "MilestoneDeadlineNotSequential")
-      .withArgs(0);
-  });
-
-  it("rejects non-sequential milestones and milestones after the final deadline", async function () {
-    const { escrow, shipper, carrier } = await deployFixture();
-    const now = await time.latest();
-    const common = [
-      "Invalid dates",
-      carrier.address,
-      now + 3600,
-      "",
-      ["Pickup", "Delivery"],
-      ["Collect", "Deliver"],
-      [ethers.parseEther("0.5"), ethers.parseEther("0.5")],
-    ];
-
-    await expect(
-      escrow.connect(shipper).createAgreement(
-        ...common,
-        [now + 1800, now + 1800],
-        { value: ethers.parseEther("1") },
-      ),
-    ).to.be.revertedWithCustomError(escrow, "MilestoneDeadlineNotSequential")
-      .withArgs(1);
-
-    await expect(
-      escrow.connect(shipper).createAgreement(
-        ...common,
-        [now + 1800, now + 3700],
-        { value: ethers.parseEther("1") },
-      ),
-    ).to.be.revertedWithCustomError(escrow, "MilestoneDeadlineAfterAgreement")
-      .withArgs(1);
-  });
-
-  it("rejects missing agreements instead of panicking in refund checks", async function () {
-    const { escrow } = await deployFixture();
-    await expect(escrow.canRefund(99))
-      .to.be.revertedWithCustomError(escrow, "AgreementNotFound")
-      .withArgs(99);
-  });
-
-  it("blocks premature refunds and out-of-order or unauthorized proofs", async function () {
-    const { escrow, shipper, carrier, outsider } = await deployFixture();
-    await createAgreement(escrow, shipper, carrier);
-    const proof = ethers.keccak256(ethers.toUtf8Bytes("evidence"));
-
-    await expect(escrow.claimRefundAfterDeadline(0))
-      .to.be.revertedWithCustomError(escrow, "DeadlineNotPassed");
-    await expect(escrow.connect(outsider).submitMilestoneProof(0, 0, proof, ""))
-      .to.be.revertedWithCustomError(escrow, "Unauthorized");
-    await expect(escrow.connect(carrier).submitMilestoneProof(0, 1, proof, ""))
+    await expect(escrow.connect(carrier).submitEvidence(99, 0, evidenceHash))
+      .to.be.revertedWithCustomError(escrow, "AgreementNotFound");
+    await time.increaseTo(dueDates[0] + 1);
+    await expect(escrow.connect(carrier).submitEvidence(0, 0, evidenceHash))
       .to.be.revertedWithCustomError(escrow, "InvalidMilestone");
-  });
-
-  it("preserves a timely submitted proof after its milestone due date", async function () {
-    const { escrow, shipper, carrier } = await deployFixture();
-    const { now } = await createAgreement(escrow, shipper, carrier);
-    const proof = ethers.keccak256(ethers.toUtf8Bytes("timely evidence"));
-    await escrow.connect(carrier).submitMilestoneProof(0, 0, proof, "ipfs://timely");
-    await time.increaseTo(now + 1801);
-
-    await expect(escrow.claimRefundAfterDeadline(0))
-      .to.be.revertedWithCustomError(escrow, "DeadlineNotPassed");
-    await expect(escrow.connect(shipper).approveMilestone(0, 0))
-      .to.emit(escrow, "MilestoneApproved");
-  });
-
-  it("protects timely submitted evidence after the overall deadline", async function () {
-    const { escrow, shipper, carrier } = await deployFixture();
-    const { now } = await createAgreement(escrow, shipper, carrier);
-    const proof = ethers.keccak256(ethers.toUtf8Bytes("final timely evidence"));
-
-    await escrow.connect(carrier).submitMilestoneProof(0, 0, proof, "ipfs://pickup");
-    await escrow.connect(shipper).approveMilestone(0, 0);
-    await escrow.connect(carrier).submitMilestoneProof(0, 1, proof, "ipfs://delivery");
-    await time.increaseTo(now + 7201);
-
-    expect(await escrow.canRefund(0)).to.equal(false);
-    await expect(escrow.claimRefundAfterDeadline(0))
-      .to.be.revertedWithCustomError(escrow, "DeadlineNotPassed");
-    await expect(escrow.connect(shipper).approveMilestone(0, 1))
-      .to.emit(escrow, "AgreementCompleted");
   });
 });

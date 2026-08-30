@@ -21,7 +21,7 @@ contract LogisticsEscrow {
     enum MilestoneState {
         Pending,
         Submitted,
-        Approved
+        Confirmed
     }
 
     struct UserProfile {
@@ -53,6 +53,7 @@ contract LogisticsEscrow {
         uint64 submittedAt;
         uint64 approvedAt;
         MilestoneState state;
+        bool paid;
     }
 
     error Unauthorized();
@@ -82,9 +83,22 @@ contract LogisticsEscrow {
     error InputTooLong(uint256 providedLength, uint256 maximumLength);
     error InvalidProofURI();
     error DeadlineRefundAvailable();
+    error DuplicateAgreementName();
+    error FixedMilestonesRequired();
+    error InvalidMilestonePayout(
+        uint256 milestoneIndex,
+        uint256 expectedPayout,
+        uint256 providedPayout
+    );
+    error EvidenceMissing();
+    error EvidenceHashMismatch(bytes32 storedHash, bytes32 suppliedHash);
+    error PaymentAlreadyReleased();
 
     address public immutable arbitrator;
-    uint256 public constant MAX_MILESTONES = 20;
+    uint256 public constant CONTRACT_VERSION = 2;
+    string public constant EVIDENCE_URI_SCHEME = "supabase://";
+    uint256 public constant MAX_MILESTONES = 2;
+    uint256 public constant PICKUP_PAYMENT_PERCENT = 30;
     uint256 public constant REPUTATION_POINTS_PER_MILESTONE = 10;
     uint256 public constant MAX_PROFILE_NAME_LENGTH = 100;
     uint256 public constant MAX_AGREEMENT_TITLE_LENGTH = 200;
@@ -100,6 +114,7 @@ contract LogisticsEscrow {
     mapping(uint256 => Agreement) private agreements;
     mapping(uint256 => Milestone[]) private milestones;
     mapping(address => uint256[]) private userAgreementIds;
+    mapping(address => mapping(bytes32 => bool)) private usedAgreementNames;
     mapping(address => uint256) public carrierReputation;
 
     uint256 private unlocked = 1;
@@ -122,6 +137,13 @@ contract LogisticsEscrow {
         uint256 indexed agreementId,
         uint256 indexed milestoneIndex,
         uint256 payout
+    );
+    event MilestoneConfirmed(
+        uint256 indexed agreementId,
+        uint256 indexed milestoneIndex,
+        bytes32 indexed evidenceHash,
+        address confirmer,
+        uint256 paymentAmount
     );
     event CarrierReputationAwarded(
         address indexed carrier,
@@ -190,12 +212,16 @@ contract LogisticsEscrow {
         if (carrier == msg.sender) revert SameParticipant();
         if (bytes(title).length == 0) revert EmptyTitle();
         _requireMaximumLength(title, MAX_AGREEMENT_TITLE_LENGTH);
+        bytes32 agreementNameKey = _agreementNameKey(title);
+        if (usedAgreementNames[msg.sender][agreementNameKey]) {
+            revert DuplicateAgreementName();
+        }
         _requireMaximumLength(notes, MAX_AGREEMENT_NOTES_LENGTH);
         if (msg.value == 0) revert ZeroFunding();
         if (deadline <= block.timestamp) {
             revert InvalidDeadline(deadline, uint64(block.timestamp));
         }
-        if (milestoneNames.length == 0 || milestoneNames.length > MAX_MILESTONES) {
+        if (milestoneNames.length != MAX_MILESTONES) {
             revert InvalidMilestoneCount(milestoneNames.length);
         }
         if (
@@ -203,6 +229,22 @@ contract LogisticsEscrow {
             milestoneNames.length != payouts.length ||
             milestoneNames.length != dueDates.length
         ) revert MilestoneArrayLengthMismatch();
+
+        if (
+            keccak256(bytes(milestoneNames[0])) != keccak256("Cargo pickup") ||
+            keccak256(bytes(milestoneNames[1])) != keccak256("Final delivery")
+        ) revert FixedMilestonesRequired();
+
+        uint256 pickupPayout = (msg.value * PICKUP_PAYMENT_PERCENT) / 100;
+        uint256 deliveryPayout = msg.value - pickupPayout;
+        if (pickupPayout == 0) revert ZeroMilestonePayout(0);
+        if (deliveryPayout == 0) revert ZeroMilestonePayout(1);
+        if (payouts[0] != pickupPayout) {
+            revert InvalidMilestonePayout(0, pickupPayout, payouts[0]);
+        }
+        if (payouts[1] != deliveryPayout) {
+            revert InvalidMilestonePayout(1, deliveryPayout, payouts[1]);
+        }
 
         uint256 payoutTotal;
         uint64 previousDueDate = uint64(block.timestamp);
@@ -220,6 +262,7 @@ contract LogisticsEscrow {
         }
         if (payoutTotal != msg.value) revert PayoutTotalMismatch(payoutTotal, msg.value);
 
+        usedAgreementNames[msg.sender][agreementNameKey] = true;
         agreementId = agreementCount++;
         agreements[agreementId] = Agreement({
             shipper: msg.sender,
@@ -245,7 +288,8 @@ contract LogisticsEscrow {
                     proofURI: "",
                     submittedAt: 0,
                     approvedAt: 0,
-                    state: MilestoneState.Pending
+                    state: MilestoneState.Pending,
+                    paid: false
                 })
             );
         }
@@ -261,6 +305,26 @@ contract LogisticsEscrow {
         bytes32 proofHash,
         string calldata proofURI
     ) external agreementExists(agreementId) {
+        if (!_isValidProofURI(proofURI)) revert InvalidProofURI();
+        _submitEvidence(agreementId, milestoneIndex, proofHash, proofURI);
+    }
+
+    /// @notice Minimal evidence commitment required by the assignment interface.
+    /// @dev The Supabase-aware frontend uses submitMilestoneProof to include the file reference.
+    function submitEvidence(
+        uint256 agreementId,
+        uint256 milestoneIndex,
+        bytes32 evidenceHash
+    ) external agreementExists(agreementId) {
+        _submitEvidence(agreementId, milestoneIndex, evidenceHash, "");
+    }
+
+    function _submitEvidence(
+        uint256 agreementId,
+        uint256 milestoneIndex,
+        bytes32 evidenceHash,
+        string memory evidenceURI
+    ) private {
         Agreement storage agreement = agreements[agreementId];
         if (agreement.carrier != msg.sender) revert Unauthorized();
         if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
@@ -271,31 +335,67 @@ contract LogisticsEscrow {
         if (
             milestone.state != MilestoneState.Pending ||
             block.timestamp > milestone.dueAt ||
-            proofHash == bytes32(0)
+            evidenceHash == bytes32(0)
         ) revert InvalidMilestone();
-        if (!_isValidProofURI(proofURI)) revert InvalidProofURI();
 
-        milestone.proofHash = proofHash;
-        milestone.proofURI = proofURI;
+        milestone.proofHash = evidenceHash;
+        milestone.proofURI = evidenceURI;
         milestone.submittedAt = uint64(block.timestamp);
         milestone.state = MilestoneState.Submitted;
-        emit MilestoneProofSubmitted(agreementId, milestoneIndex, proofHash, proofURI);
+        emit MilestoneProofSubmitted(agreementId, milestoneIndex, evidenceHash, evidenceURI);
     }
 
+    function confirmMilestone(
+        uint256 agreementId,
+        uint256 milestoneIndex,
+        bytes32 expectedEvidenceHash
+    ) external agreementExists(agreementId) nonReentrant {
+        _confirmMilestone(agreementId, milestoneIndex, expectedEvidenceHash);
+    }
+
+    /// @notice Compatibility wrapper for clients deployed before confirmMilestone was introduced.
     function approveMilestone(
         uint256 agreementId,
         uint256 milestoneIndex
     ) external agreementExists(agreementId) nonReentrant {
+        if (milestoneIndex >= milestones[agreementId].length) revert InvalidMilestone();
+        bytes32 expectedEvidenceHash = milestones[agreementId][milestoneIndex].proofHash;
+        _confirmMilestone(agreementId, milestoneIndex, expectedEvidenceHash);
+    }
+
+    function _confirmMilestone(
+        uint256 agreementId,
+        uint256 milestoneIndex,
+        bytes32 expectedEvidenceHash
+    ) private {
         Agreement storage agreement = agreements[agreementId];
         if (agreement.shipper != msg.sender) revert Unauthorized();
         if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
-        if (milestoneIndex != agreement.nextMilestone) revert InvalidMilestone();
+        if (agreement.totalAmount == 0 || agreement.remainingAmount == 0) revert InvalidStatus();
+        if (milestoneIndex >= milestones[agreementId].length) revert InvalidMilestone();
 
         Milestone storage milestone = milestones[agreementId][milestoneIndex];
-        if (milestone.state != MilestoneState.Submitted) revert InvalidMilestone();
+        if (milestone.paid || milestone.state == MilestoneState.Confirmed) {
+            revert PaymentAlreadyReleased();
+        }
+        if (milestoneIndex != agreement.nextMilestone) revert InvalidMilestone();
+        if (milestone.state != MilestoneState.Submitted || milestone.proofHash == bytes32(0)) {
+            revert EvidenceMissing();
+        }
+        if (expectedEvidenceHash != milestone.proofHash) {
+            revert EvidenceHashMismatch(milestone.proofHash, expectedEvidenceHash);
+        }
 
-        uint256 payout = milestone.payout;
-        milestone.state = MilestoneState.Approved;
+        uint256 payout = milestoneIndex == 0
+            ? (agreement.totalAmount * PICKUP_PAYMENT_PERCENT) / 100
+            : agreement.remainingAmount;
+        if (payout != milestone.payout || payout > agreement.remainingAmount) {
+            revert InvalidStatus();
+        }
+
+        // Checks-effects-interactions: confirmation and payment state are final before transfer.
+        milestone.state = MilestoneState.Confirmed;
+        milestone.paid = true;
         milestone.approvedAt = uint64(block.timestamp);
         agreement.nextMilestone += 1;
         agreement.remainingAmount -= payout;
@@ -305,7 +405,13 @@ contract LogisticsEscrow {
             agreement.status = AgreementStatus.Completed;
             emit AgreementCompleted(agreementId);
         }
-        emit MilestoneApproved(agreementId, milestoneIndex, payout);
+        emit MilestoneConfirmed(
+            agreementId,
+            milestoneIndex,
+            milestone.proofHash,
+            msg.sender,
+            payout
+        );
         emit CarrierReputationAwarded(
             agreement.carrier,
             agreementId,
@@ -314,6 +420,14 @@ contract LogisticsEscrow {
             carrierReputation[agreement.carrier]
         );
         _sendValue(agreement.carrier, payout);
+    }
+
+    function isAgreementNameAvailable(
+        address shipper,
+        string calldata title
+    ) external view returns (bool) {
+        if (bytes(title).length == 0) return false;
+        return !usedAgreementNames[shipper][_agreementNameKey(title)];
     }
 
     /// @notice Anyone can trigger an eligible refund; funds always return to the shipper.
@@ -411,12 +525,13 @@ contract LogisticsEscrow {
         if (length > maximumLength) revert InputTooLong(length, maximumLength);
     }
 
-    /// @dev Keep on-chain validation cheap: require the workflow scheme, a non-empty CID,
-    /// and a bounded URI. CID syntax is validated more strictly before the frontend fetches it.
+    /// @dev New evidence uses a self-contained Supabase reference. Legacy IPFS references remain
+    /// readable so agreements created before the storage migration do not lose their evidence.
+    /// More detailed path/CID validation happens before the frontend fetches either location.
     function _isValidProofURI(string calldata proofURI) private pure returns (bool) {
         bytes calldata value = bytes(proofURI);
         if (value.length <= 7 || value.length > MAX_PROOF_URI_LENGTH) return false;
-        return
+        bool isLegacyIpfs =
             value[0] == "i" &&
             value[1] == "p" &&
             value[2] == "f" &&
@@ -424,6 +539,50 @@ contract LogisticsEscrow {
             value[4] == ":" &&
             value[5] == "/" &&
             value[6] == "/";
+        bool isSupabase =
+            value.length > 11 &&
+            value[0] == "s" &&
+            value[1] == "u" &&
+            value[2] == "p" &&
+            value[3] == "a" &&
+            value[4] == "b" &&
+            value[5] == "a" &&
+            value[6] == "s" &&
+            value[7] == "e" &&
+            value[8] == ":" &&
+            value[9] == "/" &&
+            value[10] == "/";
+        return isSupabase || isLegacyIpfs;
+    }
+
+    /// @dev Agreement names are unique per Shipper after trimming/collapsing ASCII whitespace
+    /// and converting ASCII letters to lowercase.
+    function _agreementNameKey(string calldata title) private pure returns (bytes32) {
+        bytes calldata source = bytes(title);
+        bytes memory normalized = new bytes(source.length);
+        uint256 writeIndex;
+        bool pendingSpace;
+
+        for (uint256 i; i < source.length; ++i) {
+            uint8 character = uint8(source[i]);
+            bool isWhitespace =
+                character == 32 || character == 9 || character == 10 || character == 13;
+            if (isWhitespace) {
+                if (writeIndex != 0) pendingSpace = true;
+                continue;
+            }
+            if (pendingSpace) {
+                normalized[writeIndex++] = bytes1(uint8(32));
+                pendingSpace = false;
+            }
+            if (character >= 65 && character <= 90) character += 32;
+            normalized[writeIndex++] = bytes1(character);
+        }
+        if (writeIndex == 0) revert EmptyTitle();
+        assembly ("memory-safe") {
+            mstore(normalized, writeIndex)
+        }
+        return keccak256(normalized);
     }
 
     receive() external payable {

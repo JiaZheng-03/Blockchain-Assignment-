@@ -24,9 +24,9 @@
     "demo:local": "npm run deploy:local && npm run seed:local"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
     "ethers": "^6.17.0",
     "express": "^5.2.1",
-    "pinata": "^2.5.6",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1"

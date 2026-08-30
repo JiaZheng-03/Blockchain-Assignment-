@@ -1,24 +1,34 @@
 import 'dotenv/config';
 import express from 'express';
 import { ethers } from 'ethers';
-import { PinataSDK } from 'pinata';
+import { createClient } from '@supabase/supabase-js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESCROW_ABI } from './src/contracts/abi.js';
 import { addressesEqual } from './src/utils/address.js';
 import {
+  EVIDENCE_MIME_TYPES,
+  MAX_EVIDENCE_FILE_SIZE,
+  SUPABASE_EVIDENCE_SCHEME,
+  createSupabaseProofUri,
   createUploadAuthorizationMessage,
-  normalizeGatewayBaseUrl,
+  evidenceFileExtensionForMimeType,
+  isValidSupabaseBucketName,
+  normalizeSupabaseProjectUrl,
+  supabaseProjectRefFromUrl,
   validateEvidenceFileMetadata,
-} from './src/utils/pinataEvidence.js';
+} from './src/utils/evidenceStorage.js';
 
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url));
-const port = Number(process.env.PINATA_API_PORT || 3001);
+const port = Number(process.env.CHAINCARGO_API_PORT || 3001);
 const host = process.env.CHAINCARGO_HOST || '127.0.0.1';
-const pinataJwt = process.env.PINATA_JWT?.trim();
-const gatewayBaseUrl = normalizeGatewayBaseUrl(process.env.PINATA_GATEWAY);
-const gatewayHost = new URL(gatewayBaseUrl).host;
+const supabaseUrl = normalizeSupabaseProjectUrl(process.env.SUPABASE_URL);
+const supabaseProjectRef = supabaseProjectRefFromUrl(supabaseUrl);
+const supabaseSecretKey = (
+  process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
+)?.trim();
+const evidenceBucket = process.env.SUPABASE_STORAGE_BUCKET?.trim() || 'chaincargo-evidence';
 const chainId = Number(process.env.VITE_ESCROW_CHAIN_ID || 11155111);
 const deploymentFile = chainId === 31337 ? 'deployment.local.json' : 'deployment.json';
 const deployment = JSON.parse(
@@ -29,8 +39,20 @@ const contractAddress = process.env.VITE_ESCROW_CONTRACT_ADDRESS?.trim() || save
 const rpcUrl = chainId === 31337
   ? process.env.LOCAL_RPC_URL?.trim() || 'http://127.0.0.1:8545'
   : process.env.SEPOLIA_RPC_URL?.trim() || 'https://ethereum-sepolia-rpc.publicnode.com';
-const pinata = pinataJwt
-  ? new PinataSDK({ pinataJwt, pinataGateway: gatewayHost })
+const hasSupabaseConfiguration = Boolean(
+  supabaseUrl &&
+  supabaseProjectRef &&
+  supabaseSecretKey &&
+  isValidSupabaseBucketName(evidenceBucket),
+);
+const supabase = hasSupabaseConfiguration
+  ? createClient(supabaseUrl, supabaseSecretKey, {
+      auth: {
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        persistSession: false,
+      },
+    })
   : null;
 const provider = new ethers.JsonRpcProvider(rpcUrl);
 const escrow = ethers.isAddress(contractAddress || '')
@@ -38,6 +60,7 @@ const escrow = ethers.isAddress(contractAddress || '')
   : null;
 const usedAuthorizations = new Map();
 const uploadAttempts = new Map();
+let bucketReadyPromise = null;
 
 function removeExpiredEntries() {
   const cutoff = Date.now() - 5 * 60_000;
@@ -61,10 +84,6 @@ function recordUploadAttempt(account) {
   return true;
 }
 
-function safeFileName(name) {
-  return path.basename(name).replace(/[^a-zA-Z0-9._ -]/g, '_').slice(0, 160);
-}
-
 function sendError(response, status, error) {
   return response.status(status).json({ error });
 }
@@ -78,27 +97,105 @@ function isRpcUnavailable(error) {
   ].includes(error?.code) || /network|connect|timeout|socket|fetch failed/i.test(error?.message || '');
 }
 
+function isMissingBucketError(error) {
+  return Number(error?.statusCode || error?.status) === 404 ||
+    /not found|does not exist/i.test(error?.message || '');
+}
+
+async function configureEvidenceBucket() {
+  const options = {
+    public: true,
+    allowedMimeTypes: EVIDENCE_MIME_TYPES,
+    fileSizeLimit: MAX_EVIDENCE_FILE_SIZE,
+  };
+  const { error: lookupError } = await supabase.storage.getBucket(evidenceBucket);
+  if (lookupError && !isMissingBucketError(lookupError)) throw lookupError;
+
+  const operation = lookupError
+    ? supabase.storage.createBucket(evidenceBucket, options)
+    : supabase.storage.updateBucket(evidenceBucket, options);
+  const { error } = await operation;
+  if (error) throw error;
+}
+
+function ensureEvidenceBucket() {
+  if (!bucketReadyPromise) {
+    bucketReadyPromise = configureEvidenceBucket().catch((error) => {
+      bucketReadyPromise = null;
+      throw error;
+    });
+  }
+  return bucketReadyPromise;
+}
+
+async function contractSupportsSupabaseEvidence() {
+  if (!escrow) return false;
+  const [scheme, version] = await Promise.all([
+    escrow.EVIDENCE_URI_SCHEME(),
+    escrow.CONTRACT_VERSION(),
+  ]);
+  return scheme === SUPABASE_EVIDENCE_SCHEME && Number(version) >= 2;
+}
+
+function buildEvidenceObjectPath({ agreementId, mimeType, milestoneIndex, nonce }) {
+  const extension = evidenceFileExtensionForMimeType(mimeType);
+  return [
+    String(chainId),
+    contractAddress.toLowerCase(),
+    String(agreementId),
+    String(milestoneIndex),
+    `${nonce}${extension}`,
+  ].join('/');
+}
+
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '16kb' }));
 
-app.get('/api/pinata/config', (_request, response) => {
+app.get('/api/storage/config', async (_request, response) => {
+  let contractSupported = false;
+  if (supabase && escrow) {
+    try {
+      contractSupported = await contractSupportsSupabaseEvidence();
+    } catch {
+      // Report an unavailable/legacy contract without exposing RPC details.
+    }
+  }
+
+  let message = '';
+  if (!supabase) {
+    message = 'Add a valid SUPABASE_URL, SUPABASE_SECRET_KEY, and bucket name to .env.';
+  } else if (!escrow) {
+    message = `No escrow contract is configured for chain ${chainId}.`;
+  } else if (!contractSupported) {
+    message = 'Redeploy LogisticsEscrow before using Supabase evidence storage.';
+  }
   response.json({
-    configured: Boolean(pinata),
-    gatewayBaseUrl,
+    configured: Boolean(supabase && escrow && contractSupported),
+    message,
   });
 });
 
-app.post('/api/pinata/upload-url', async (request, response) => {
-  if (!pinata) {
+app.post('/api/storage/upload-url', async (request, response) => {
+  if (!supabase) {
     return sendError(
       response,
       503,
-      'Pinata is not configured. Add PINATA_JWT and PINATA_GATEWAY to .env.',
+      'Supabase is not configured. Add SUPABASE_URL and SUPABASE_SECRET_KEY to .env.',
     );
   }
   if (!escrow) {
     return sendError(response, 503, `No escrow contract is configured for chain ${chainId}.`);
+  }
+  try {
+    if (!await contractSupportsSupabaseEvidence()) {
+      return sendError(response, 409, 'Redeploy LogisticsEscrow before uploading Supabase evidence.');
+    }
+  } catch (error) {
+    if (isRpcUnavailable(error)) {
+      return sendError(response, 503, 'The blockchain RPC is temporarily unavailable.');
+    }
+    return sendError(response, 409, 'The configured contract does not support Supabase evidence.');
   }
 
   removeExpiredEntries();
@@ -202,24 +299,30 @@ app.post('/api/pinata/upload-url', async (request, response) => {
     }
 
     let signedUrl;
+    let proofURI;
     try {
-      signedUrl = await pinata.upload.public.createSignedURL({
-        expires: 60,
-        keyvalues: {
-          agreementId: String(agreementId),
-          carrier: ethers.getAddress(account),
-          contract: contractAddress,
-          milestoneIndex: String(milestoneIndex),
-        },
-        maxFileSize: fileSize,
-        mimeTypes: [mimeType],
-        name: safeFileName(fileName),
+      await ensureEvidenceBucket();
+      const objectPath = buildEvidenceObjectPath({
+        agreementId,
+        mimeType,
+        milestoneIndex,
+        nonce,
       });
+      proofURI = createSupabaseProofUri({
+        bucket: evidenceBucket,
+        objectPath,
+        projectRef: supabaseProjectRef,
+      });
+      const { data, error } = await supabase.storage
+        .from(evidenceBucket)
+        .createSignedUploadUrl(objectPath, { upsert: false });
+      if (error || !data?.signedUrl) throw error || new Error('Missing signed upload URL.');
+      signedUrl = data.signedUrl;
     } catch {
-      return sendError(response, 502, 'Pinata is temporarily unable to authorize the upload.');
+      return sendError(response, 502, 'Supabase is temporarily unable to authorize the upload.');
     }
     signedUrlIssued = true;
-    return response.json({ gatewayBaseUrl, signedUrl });
+    return response.json({ proofURI, signedUrl });
   } catch {
     return sendError(response, 500, 'The upload authorization could not be processed.');
   } finally {
@@ -237,6 +340,6 @@ app.use((request, response, next) => {
 });
 
 app.listen(port, host, () => {
-  const status = pinata ? 'configured' : 'missing PINATA_JWT';
-  console.log(`ChainCargo API listening at http://${host}:${port} (Pinata ${status})`);
+  const status = supabase ? 'configured' : 'missing or invalid Supabase settings';
+  console.log(`ChainCargo API listening at http://${host}:${port} (Supabase ${status})`);
 });

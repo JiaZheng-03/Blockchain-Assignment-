@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  FIXED_MILESTONES,
   MAX_MILESTONES,
+  normalizeAgreementName,
   validateAgreementDraft,
 } from '../src/utils/agreementValidation.js';
 import { ethers } from 'ethers';
@@ -30,16 +32,21 @@ import {
   isArbitrationAgreement,
 } from '../src/utils/arbitration.js';
 import {
+  createSupabaseProofUri,
   createUploadAuthorizationMessage,
   evidenceHashMatches,
-  getEvidenceGatewayUrl,
+  getEvidencePublicUrl,
+  getEvidenceStorageLabel,
+  getSupabaseEvidenceUrl,
   hashEvidenceBytes,
   hashEvidenceFile,
   isValidIpfsCid,
+  isValidSupabaseBucketName,
   ipfsUriToCid,
-  normalizeGatewayBaseUrl,
+  parseSupabaseProofUri,
+  supabaseProjectRefFromUrl,
   validateEvidenceFileMetadata,
-} from '../src/utils/pinataEvidence.js';
+} from '../src/utils/evidenceStorage.js';
 import { filterAndSortAgreements } from '../src/utils/agreementFilters.js';
 import {
   formatDeadlineDuration,
@@ -231,7 +238,7 @@ test('builds the arbitrator case range and includes disputed and resolved record
   assert.equal(isArbitrationAgreement({ status: 0n }), false);
 });
 
-test('cryptographically verifies uploaded file bytes before payout approval', () => {
+test('cryptographically verifies uploaded file bytes before milestone confirmation', () => {
   const receipt = new TextEncoder().encode('signed delivery receipt');
   const altered = new TextEncoder().encode('altered delivery receipt');
   const proofHash = hashEvidenceBytes(receipt);
@@ -240,17 +247,31 @@ test('cryptographically verifies uploaded file bytes before payout approval', ()
   assert.equal(evidenceHashMatches(hashEvidenceBytes(altered), proofHash), false);
 });
 
-test('builds safe IPFS gateway links and wallet upload authorization messages', () => {
+test('builds safe Supabase evidence links and wallet upload authorization messages', () => {
+  const projectRef = 'abcdefghijklmnopqrst';
+  const bucket = 'chaincargo-evidence';
+  const objectPath = `11155111/${carrier.toLowerCase()}/7/1/12345678-1234-1234-1234-123456789abc.pdf`;
+  const proofURI = createSupabaseProofUri({ bucket, objectPath, projectRef });
+  assert.equal(supabaseProjectRefFromUrl(`https://${projectRef}.supabase.co/`), projectRef);
+  assert.equal(isValidSupabaseBucketName(bucket), true);
+  assert.deepEqual(parseSupabaseProofUri(proofURI), { bucket, objectPath, projectRef });
+  assert.equal(
+    getSupabaseEvidenceUrl(proofURI),
+    `https://${projectRef}.supabase.co/storage/v1/object/public/${bucket}/${objectPath}`,
+  );
+  assert.equal(getEvidencePublicUrl(proofURI), getSupabaseEvidenceUrl(proofURI));
+  assert.equal(getEvidenceStorageLabel(proofURI), 'Supabase Storage');
+  assert.equal(getEvidencePublicUrl('https://attacker.example/file'), '');
+  assert.equal(parseSupabaseProofUri('supabase://invalid/../secret.pdf'), null);
+
+  // Evidence recorded before the migration remains readable from a neutral public IPFS gateway.
   const cid = `b${'a'.repeat(58)}`;
-  assert.equal(normalizeGatewayBaseUrl('demo.mypinata.cloud/'), 'https://demo.mypinata.cloud');
   assert.equal(isValidIpfsCid(cid), true);
   assert.equal(ipfsUriToCid(`ipfs://${cid}`), cid);
-  assert.equal(
-    getEvidenceGatewayUrl(`ipfs://${cid}`, 'demo.mypinata.cloud'),
-    `https://demo.mypinata.cloud/ipfs/${cid}`,
-  );
-  assert.equal(getEvidenceGatewayUrl('https://attacker.example/file', 'demo.mypinata.cloud'), '');
-  assert.equal(getEvidenceGatewayUrl('ipfs://not-a-cid', 'demo.mypinata.cloud'), '');
+  assert.equal(getEvidencePublicUrl(`ipfs://${cid}`), `https://ipfs.io/ipfs/${cid}`);
+  assert.equal(getEvidencePublicUrl('ipfs://not-a-cid'), '');
+  assert.equal(getEvidenceStorageLabel(`ipfs://${cid}`), 'legacy IPFS');
+
   const message = createUploadAuthorizationMessage({
     account: carrier,
     agreementId: '7',
@@ -299,8 +320,8 @@ function validDraft() {
       notes: '',
     },
     milestones: [
-      { name: 'Pickup', details: 'Signed pickup note', percentage: '30', dueAt: '2026-07-25T10:00' },
-      { name: 'Delivery', details: 'Signed delivery note', percentage: '70', dueAt: '2026-07-25T11:30' },
+      { ...FIXED_MILESTONES[0], dueAt: '2026-07-25T10:00' },
+      { ...FIXED_MILESTONES[1], dueAt: '2026-07-25T11:30' },
     ],
   };
 }
@@ -310,6 +331,10 @@ test('accepts a valid chronological agreement and calculates exact payouts', () 
   assert.equal(result.payouts[0], 300000000000000000n);
   assert.equal(result.payouts[1], 700000000000000000n);
   assert.equal(result.payouts.reduce((sum, value) => sum + value, 0n), result.totalWei);
+});
+
+test('normalizes agreement names for case-insensitive duplicate validation', () => {
+  assert.equal(normalizeAgreementName('  Port   KLANG\tShipment  '), 'port klang shipment');
 });
 
 test('accepts same-day milestones in time order and allows the last one at the final deadline', () => {
@@ -350,36 +375,26 @@ test('rejects non-chronological milestones and milestones after the final deadli
   assert.throws(() => validateAgreementDraft(tooLate), /cannot be later than the final deadline/i);
 });
 
-test('rejects invalid participants, percentages, and zero-wei milestone payouts', () => {
+test('rejects invalid participants, modified fixed payouts, and zero-wei milestone payouts', () => {
   const sameParticipant = validDraft();
   sameParticipant.form.carrier = shipper;
   assert.throws(() => validateAgreementDraft(sameParticipant), /different wallet addresses/i);
 
-  const decimalPercentage = validDraft();
-  decimalPercentage.milestones[0].percentage = '30.5';
-  decimalPercentage.milestones[1].percentage = '69.5';
-  assert.throws(() => validateAgreementDraft(decimalPercentage), /whole percentage/i);
-
-  const wrongTotal = validDraft();
-  wrongTotal.milestones[1].percentage = '60';
-  assert.throws(() => validateAgreementDraft(wrongTotal), /total 90%/i);
+  const modifiedAllocation = validDraft();
+  modifiedAllocation.milestones[0].percentage = '40';
+  modifiedAllocation.milestones[1].percentage = '60';
+  assert.throws(() => validateAgreementDraft(modifiedAllocation), /fixed at Cargo pickup 30%/i);
 
   const dust = validDraft();
   dust.form.totalAmount = '0.000000000000000001';
-  dust.milestones[0].percentage = '1';
-  dust.milestones[1].percentage = '99';
-  assert.throws(() => validateAgreementDraft(dust), /payout is too small/i);
+  assert.throws(() => validateAgreementDraft(dust), /too small for the fixed 30%\/70%/i);
 });
 
-test('caps milestone count to keep agreement creation gas-bounded', () => {
+test('requires exactly the two fixed milestones', () => {
+  assert.equal(MAX_MILESTONES, 2);
   const draft = validDraft();
-  draft.milestones = Array.from({ length: MAX_MILESTONES + 1 }, (_, index) => ({
-    name: `Milestone ${index + 1}`,
-    details: 'Evidence',
-    percentage: '1',
-    dueAt: '2026-07-25T10:00',
-  }));
-  assert.throws(() => validateAgreementDraft(draft), /at most 20 milestones/i);
+  draft.milestones.pop();
+  assert.throws(() => validateAgreementDraft(draft), /exactly Cargo pickup and Final delivery/i);
 });
 
 test('mirrors important contract text limits before transaction submission', () => {
@@ -566,9 +581,9 @@ test('reconstructs viewable history when an RPC rejects event-log queries', () =
     [
       ['AgreementCreated', 100],
       ['MilestoneProofSubmitted', 200],
-      ['MilestoneApproved', 300],
+      ['MilestoneConfirmed', 300],
       ['MilestoneProofSubmitted', 400],
-      ['MilestoneApproved', 500],
+      ['MilestoneConfirmed', 500],
       ['AgreementCompleted', 500],
     ],
   );
@@ -583,14 +598,14 @@ test('groups history into one newest-first summary per agreement', () => {
     ],
     [
       { agreementId: 0, name: 'AgreementCreated', timestamp: 100 },
-      { agreementId: 0, name: 'MilestoneApproved', timestamp: 500 },
+      { agreementId: 0, name: 'MilestoneConfirmed', timestamp: 500 },
       { agreementId: 1, name: 'AgreementCreated', timestamp: 200 },
     ],
   );
 
   assert.deepEqual(grouped.map((agreement) => agreement.id), [0, 1]);
   assert.equal(grouped[0].eventCount, 2);
-  assert.equal(grouped[0].latestEvent.name, 'MilestoneApproved');
+  assert.equal(grouped[0].latestEvent.name, 'MilestoneConfirmed');
   assert.equal(grouped[1].eventCount, 1);
 });
 

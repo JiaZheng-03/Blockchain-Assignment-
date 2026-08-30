@@ -19,8 +19,13 @@ const errorMessages = {
   EmptyTitle: 'Enter an agreement name.',
   ZeroFunding: 'The escrow amount must be greater than zero.',
   MilestoneArrayLengthMismatch: 'The milestone fields have inconsistent lengths.',
-  InvalidProofURI: 'Evidence must use a non-empty, bounded ipfs:// URI.',
+  InvalidProofURI: 'Evidence must use a non-empty, bounded supabase:// or legacy ipfs:// reference.',
   DeadlineRefundAvailable: 'The pending milestone deadline has passed. The refund must be handled before a new dispute.',
+  DuplicateAgreementName: 'You already created an agreement with this name. Choose a different agreement name.',
+  FixedMilestonesRequired: 'Agreements must use the fixed Cargo pickup and Final delivery milestones.',
+  EvidenceMissing: 'The Carrier must submit evidence before this milestone can be confirmed.',
+  EvidenceHashMismatch: 'The supplied evidence hash does not match the Carrier submission.',
+  PaymentAlreadyReleased: 'This milestone has already been confirmed and paid.',
 };
 
 function findRevertData(error) {
@@ -56,6 +61,8 @@ function describeCustomError(parsed) {
       return `Milestone ${index} cannot be later than the final deadline.`;
     case 'PayoutTotalMismatch':
       return 'Milestone payouts must exactly equal the deposited escrow amount.';
+    case 'InvalidMilestonePayout':
+      return `Milestone ${index} must use the fixed 30%/70% payment allocation.`;
     case 'InputTooLong':
       return `A text value is too long. The contract allows at most ${parsed.args.maximumLength} bytes.`;
     default:

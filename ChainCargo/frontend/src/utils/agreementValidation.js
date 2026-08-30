@@ -1,11 +1,27 @@
 import { ethers } from 'ethers';
 
 export const MIN_SCHEDULE_BUFFER_MS = 2 * 60 * 1000;
-export const MAX_MILESTONES = 20;
+export const MAX_MILESTONES = 2;
 export const MAX_AGREEMENT_TITLE_LENGTH = 200;
 export const MAX_AGREEMENT_NOTES_LENGTH = 2_000;
 export const MAX_MILESTONE_NAME_LENGTH = 120;
 export const MAX_MILESTONE_DETAILS_LENGTH = 1_000;
+export const FIXED_MILESTONES = Object.freeze([
+  Object.freeze({
+    name: 'Cargo pickup',
+    details: 'Photo or PDF proving that the Carrier collected the cargo',
+    percentage: '30',
+  }),
+  Object.freeze({
+    name: 'Final delivery',
+    details: 'Photo or PDF proving that the Carrier completed final delivery',
+    percentage: '70',
+  }),
+]);
+
+export function normalizeAgreementName(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
 
 function requireMaximumUtf8Length(value, maximum, label) {
   if (ethers.toUtf8Bytes(value).length > maximum) {
@@ -69,18 +85,22 @@ export function validateAgreementDraft({ form, milestones, account, nowMs = Date
     minimumTimeMs,
   } = validateAgreementBasics({ form, account, nowMs });
 
-  if (!milestones.length) throw new Error('Add at least one milestone.');
-  if (milestones.length > MAX_MILESTONES) {
-    throw new Error(`An agreement can contain at most ${MAX_MILESTONES} milestones.`);
+  if (milestones.length !== MAX_MILESTONES) {
+    throw new Error('Every agreement must contain exactly Cargo pickup and Final delivery.');
   }
 
-  let percentageTotal = 0;
   let previousDueMs = minimumTimeMs - 1;
   const dueDates = [];
-  const percentages = [];
 
   milestones.forEach((milestone, index) => {
     const number = index + 1;
+    const fixedMilestone = FIXED_MILESTONES[index];
+    if (
+      milestone.name !== fixedMilestone.name ||
+      String(milestone.percentage) !== fixedMilestone.percentage
+    ) {
+      throw new Error('Milestones and payouts are fixed at Cargo pickup 30% and Final delivery 70%.');
+    }
     if (!milestone.name.trim()) throw new Error(`Enter a name for milestone ${number}.`);
     requireMaximumUtf8Length(
       milestone.name,
@@ -95,13 +115,6 @@ export function validateAgreementDraft({ form, milestones, account, nowMs = Date
       MAX_MILESTONE_DETAILS_LENGTH,
       `Milestone ${number} details`,
     );
-
-    const percentage = Number(milestone.percentage);
-    if (!Number.isInteger(percentage) || percentage < 1 || percentage > 100) {
-      throw new Error(`Milestone ${number} payout must be a whole percentage from 1 to 100.`);
-    }
-    percentageTotal += percentage;
-    percentages.push(percentage);
 
     const dueMs = new Date(milestone.dueAt).getTime();
     if (!Number.isFinite(dueMs)) throw new Error(`Select a due date for milestone ${number}.`);
@@ -118,22 +131,11 @@ export function validateAgreementDraft({ form, milestones, account, nowMs = Date
     dueDates.push(Math.floor(dueMs / 1000));
   });
 
-  if (percentageTotal !== 100) {
-    throw new Error(`Milestone percentages total ${percentageTotal}%; they must total exactly 100%.`);
+  const pickupPayout = (totalWei * 30n) / 100n;
+  const payouts = [pickupPayout, totalWei - pickupPayout];
+  if (payouts.some((payout) => payout === 0n)) {
+    throw new Error('The escrow amount is too small for the fixed 30%/70% payouts.');
   }
-
-  let allocated = 0n;
-  const payouts = percentages.map((percentage, index) => {
-    const payout =
-      index === percentages.length - 1
-        ? totalWei - allocated
-        : (totalWei * BigInt(percentage)) / 100n;
-    allocated += payout;
-    if (payout === 0n) {
-      throw new Error(`Milestone ${index + 1} payout is too small for the escrow amount.`);
-    }
-    return payout;
-  });
 
   return {
     totalWei,

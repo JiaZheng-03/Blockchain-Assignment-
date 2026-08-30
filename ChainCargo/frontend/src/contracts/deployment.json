@@ -1,7 +1,7 @@
 {
-  "address": "0xD9e8fEC538be2cc7F8BF3BeF506BD4093a76C1BC",
+  "address": "0x8656317679e307549f17a8Ff5316792Cb1c4EA00",
   "chainId": 11155111,
-  "deploymentBlock": 11418767,
+  "deploymentBlock": 11598265,
   "abi": [
     {
       "inputs": [],
@@ -35,6 +35,16 @@
       "type": "error"
     },
     {
+      "inputs": [],
+      "name": "DeadlineRefundAvailable",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "DuplicateAgreementName",
+      "type": "error"
+    },
+    {
       "inputs": [
         {
           "internalType": "uint256",
@@ -48,6 +58,48 @@
     {
       "inputs": [],
       "name": "EmptyTitle",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "storedHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "suppliedHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "EvidenceHashMismatch",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "EvidenceMissing",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "FixedMilestonesRequired",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "providedLength",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "maximumLength",
+          "type": "uint256"
+        }
+      ],
+      "name": "InputTooLong",
       "type": "error"
     },
     {
@@ -99,6 +151,32 @@
       "type": "error"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "expectedPayout",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "providedPayout",
+          "type": "uint256"
+        }
+      ],
+      "name": "InvalidMilestonePayout",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidProofURI",
+      "type": "error"
+    },
+    {
       "inputs": [],
       "name": "InvalidRole",
       "type": "error"
@@ -138,6 +216,11 @@
     {
       "inputs": [],
       "name": "NotRegistered",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "PaymentAlreadyReleased",
       "type": "error"
     },
     {
@@ -372,6 +455,43 @@
         {
           "indexed": true,
           "internalType": "bytes32",
+          "name": "evidenceHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "confirmer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "paymentAmount",
+          "type": "uint256"
+        }
+      ],
+      "name": "MilestoneConfirmed",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
           "name": "proofHash",
           "type": "bytes32"
         },
@@ -437,7 +557,137 @@
     },
     {
       "inputs": [],
+      "name": "CONTRACT_VERSION",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "EVIDENCE_URI_SCHEME",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MAX_AGREEMENT_NOTES_LENGTH",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MAX_AGREEMENT_TITLE_LENGTH",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MAX_DISPUTE_REASON_LENGTH",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "MAX_MILESTONES",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MAX_MILESTONE_DETAILS_LENGTH",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MAX_MILESTONE_NAME_LENGTH",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MAX_PROFILE_NAME_LENGTH",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "MAX_PROOF_URI_LENGTH",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "PICKUP_PAYMENT_PERCENT",
       "outputs": [
         {
           "internalType": "uint256",
@@ -552,6 +802,29 @@
         }
       ],
       "name": "claimRefundAfterDeadline",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "expectedEvidenceHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "confirmMilestone",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -737,6 +1010,11 @@
               "internalType": "enum LogisticsEscrow.MilestoneState",
               "name": "state",
               "type": "uint8"
+            },
+            {
+              "internalType": "bool",
+              "name": "paid",
+              "type": "bool"
             }
           ],
           "internalType": "struct LogisticsEscrow.Milestone[]",
@@ -824,6 +1102,30 @@
     {
       "inputs": [
         {
+          "internalType": "address",
+          "name": "shipper",
+          "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "title",
+          "type": "string"
+        }
+      ],
+      "name": "isAgreementNameAvailable",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "uint256",
           "name": "agreementId",
           "type": "uint256"
@@ -871,6 +1173,29 @@
         }
       ],
       "name": "resolveDispute",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "evidenceHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "submitEvidence",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"

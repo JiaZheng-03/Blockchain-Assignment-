@@ -7,8 +7,8 @@ ChainCargo is a university logistics escrow dApp. Preserve the current stack and
 - Solidity 0.8.24 and Hardhat
 - React, Vite, JavaScript, and React Router
 - ethers v6 and MetaMask
-- Express for protected Pinata upload authorization
-- Pinata/IPFS for public evidence files
+- Express for protected Supabase upload authorization
+- Supabase Storage for public evidence files
 - Sepolia as the submitted/default network; Hardhat chain 31337 for local development
 
 `ChainCargo/frontend` is the application root. `contracts/LogisticsEscrow.sol` is one multi-agreement escrow contract; the project does not deploy an `Escrow.sol` instance per agreement and has no `EscrowFactory.sol`.
@@ -16,10 +16,10 @@ ChainCargo is a university logistics escrow dApp. Preserve the current stack and
 ## Roles and agreement flow
 
 - A wallet registers on-chain as a Shipper or Carrier.
-- A Shipper selects an already-registered Carrier, creates an agreement, defines ordered milestones, and deposits ETH equal to all milestone payouts.
+- A Shipper selects an already-registered Carrier, creates a uniquely named agreement, schedules the two fixed milestones, and deposits the full escrow.
 - The Carrier assigned by the Shipper submits evidence for the current milestone before its deadline.
-- The Shipper verifies the evidence bytes and approves the milestone, releasing its exact payout.
-- Each successful Shipper approval awards the Carrier exactly 10 on-chain reputation points.
+- The immutable Shipper verifies the evidence bytes and confirms the milestone, atomically releasing 30% for Cargo pickup or the remaining 70% for Final delivery.
+- Each successful Shipper confirmation awards the Carrier exactly 10 on-chain reputation points.
 - A current milestone left `Pending` after its deadline enables a deterministic refund of all remaining escrow to the Shipper.
 - Either participant may dispute an active agreement unless a pending-milestone refund is already eligible. The deployment arbitrator resolves the remaining escrow split.
 - Contract events drive the History and dispute-detail views.
@@ -32,10 +32,10 @@ Never remove or weaken this workflow:
 
 1. The Carrier selects a JPEG, PNG, WebP, or PDF (maximum 10 MB).
 2. The frontend computes `keccak256` over the exact file bytes.
-3. The Express endpoint validates a signed MetaMask upload authorization and current blockchain state before requesting a short-lived Pinata signed URL.
-4. Pinata returns a CID and the contract stores the hash plus `ipfs://CID`.
-5. The Shipper downloads the file through the configured trusted IPFS gateway and hashes the downloaded bytes.
-6. Approval stays disabled unless the downloaded hash equals the on-chain `proofHash`.
+3. The Express endpoint validates a signed MetaMask upload authorization and current blockchain state before requesting a short-lived Supabase signed upload URL.
+4. Supabase stores the file in the dedicated public bucket and the contract stores the hash plus a self-contained `supabase://project-ref/bucket/path` reference.
+5. The Shipper downloads the file only from the validated Supabase project reference (or the neutral gateway for legacy `ipfs://` evidence) and hashes the downloaded bytes.
+6. Confirmation stays disabled unless the downloaded hash equals the on-chain `proofHash`.
 
 Do not hash files on-chain. Do not automatically fetch arbitrary HTTP(S) proof locations supplied from contract data.
 
@@ -44,9 +44,9 @@ Do not hash files on-chain. Do not automatically fetch arbitrary HTTP(S) proof l
 - Keep `REPUTATION_POINTS_PER_MILESTONE = 10`.
 - Reputation tiers are: 0 New, 10+ Emerging, 50+ Established, 100+ Trusted, and 250+ Elite.
 - Proof submission, file verification, refunds, and dispute resolution award no reputation.
-- Only one approval is possible for a milestone.
-- Milestones execute sequentially and their payouts must exactly equal funded escrow.
-- Timely `Submitted` evidence remains approvable or disputable after its due date; it is not refundable merely because time passes.
+- Only one confirmation/payment is possible for a milestone.
+- Exactly two milestones execute sequentially: Cargo pickup pays 30%, and Final delivery pays the remaining 70%.
+- Timely `Submitted` evidence remains confirmable or disputable after its due date; it is not refundable merely because time passes.
 - An already-eligible missed-`Pending`-milestone refund cannot be blocked by opening a new dispute.
 - Use checks-effects-interactions and retain reentrancy protection around ETH transfers.
 - Keep user-controlled on-chain strings bounded.
@@ -63,8 +63,8 @@ Do not hash files on-chain. Do not automatically fetch arbitrary HTTP(S) proof l
 
 ## Security and secrets
 
-- Never commit `.env`, `PINATA_JWT`, RPC credentials, deployer keys, seed phrases, or wallet secrets.
-- Pinata credentials remain server-only and must not use a `VITE_` prefix.
+- Never commit `.env`, Supabase secret keys, RPC credentials, deployer keys, seed phrases, or wallet secrets.
+- `SUPABASE_SECRET_KEY` remains server-only and must not use a `VITE_` prefix.
 - Do not expose credentials, internal stack traces, or raw upstream errors in API responses.
 - Use blockchain block timestamps for upload/refund eligibility; browser time is only for countdown display.
 - Keep signed-upload replay protection and per-wallet upload rate limiting.

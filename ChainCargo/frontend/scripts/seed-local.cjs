@@ -44,7 +44,7 @@ async function main() {
         carrier.address,
         now + 14 * 24 * 60 * 60,
         "Seeded for the live MetaMask coursework demonstration.",
-        ["Pickup confirmed", "Final delivery"],
+        ["Cargo pickup", "Final delivery"],
         ["Signed pickup note", "Signed proof of delivery"],
         payouts,
         [now + 3 * 24 * 60 * 60, now + 10 * 24 * 60 * 60],

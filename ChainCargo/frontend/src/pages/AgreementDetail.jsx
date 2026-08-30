@@ -8,12 +8,12 @@ import { normalizeAgreement } from '../hooks/useAgreements';
 import { useCarrierReputation } from '../hooks/useCarrierReputation';
 import {
   EVIDENCE_FILE_ACCEPT,
-  getEvidenceGatewayUrl,
-  normalizeGatewayBaseUrl,
-  uploadEvidenceToPinata,
+  getEvidencePublicUrl,
+  getEvidenceStorageLabel,
+  uploadEvidenceToSupabase,
   validateEvidenceFileMetadata,
-  verifyEvidenceFromGateway,
-} from '../utils/pinataEvidence';
+  verifyEvidenceFromStorage,
+} from '../utils/evidenceStorage';
 import { getDeadlineState, isRefundButtonAvailable } from '../utils/deadlineAlerts';
 import {
   decodeEscrowEvent,
@@ -34,8 +34,8 @@ function AgreementDetail() {
   const [milestones, setMilestones] = useState([]);
   const [canRefund, setCanRefund] = useState(false);
   const [evidenceFile, setEvidenceFile] = useState(null);
-  const [gatewayBaseUrl, setGatewayBaseUrl] = useState(normalizeGatewayBaseUrl(''));
-  const [pinataConfigured, setPinataConfigured] = useState(null);
+  const [storageConfigured, setStorageConfigured] = useState(null);
+  const [storageConfigurationMessage, setStorageConfigurationMessage] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
   const [verification, setVerification] = useState(null);
   const [disputeReason, setDisputeReason] = useState('');
@@ -78,7 +78,10 @@ function AgreementDetail() {
           submittedAt: Number(milestone.submittedAt),
           approvedAt: Number(milestone.approvedAt),
           state: Number(milestone.state),
-          statusLabel: MILESTONE_STATUS[Number(milestone.state)],
+          paid: Boolean(milestone.paid),
+          statusLabel: Number(milestone.state) === 2 && milestone.paid
+            ? 'Confirmed & paid'
+            : MILESTONE_STATUS[Number(milestone.state)],
         })),
       );
       setCanRefund(refundable);
@@ -162,19 +165,20 @@ function AgreementDetail() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/pinata/config')
+    fetch('/api/storage/config')
       .then((response) => response.ok ? response.json() : null)
       .then((config) => {
         if (!cancelled) {
-          setPinataConfigured(Boolean(config?.configured));
-          if (config?.gatewayBaseUrl) {
-            setGatewayBaseUrl(normalizeGatewayBaseUrl(config.gatewayBaseUrl));
-          }
+          setStorageConfigured(Boolean(config?.configured));
+          setStorageConfigurationMessage(config?.message || 'The evidence storage API is unavailable.');
         }
       })
       .catch(() => {
-        // Public gateway fallback remains available for previously uploaded IPFS evidence.
-        if (!cancelled) setPinataConfigured(false);
+        // Existing public Supabase and legacy IPFS evidence remains directly viewable.
+        if (!cancelled) {
+          setStorageConfigured(false);
+          setStorageConfigurationMessage('The evidence storage API is unavailable.');
+        }
       });
     return () => {
       cancelled = true;
@@ -217,13 +221,13 @@ function AgreementDetail() {
   };
 
   const submitEvidence = async (milestone) => {
-    if (!evidenceFile || !pinataConfigured) return;
+    if (!evidenceFile || !storageConfigured) return;
     try {
       setBusyAction('proof');
       setError('');
       setUploadStatus('Confirm the evidence-upload authorization in MetaMask…');
       const contract = await getWriteContract();
-      const upload = await uploadEvidenceToPinata({
+      const upload = await uploadEvidenceToSupabase({
         account,
         agreementId: id,
         contractAddress: address,
@@ -231,7 +235,7 @@ function AgreementDetail() {
         milestoneIndex: milestone.index,
         signMessage: (message) => contract.runner.signMessage(message),
       });
-      setUploadStatus('Uploaded to IPFS. Confirm the on-chain evidence transaction in MetaMask…');
+      setUploadStatus('Uploaded to Supabase. Confirm the on-chain evidence transaction in MetaMask…');
       const transaction = await contract.submitMilestoneProof(
         id,
         milestone.index,
@@ -254,10 +258,10 @@ function AgreementDetail() {
     try {
       setBusyAction('verify');
       setVerification({ milestoneIndex: milestone.index, status: 'checking' });
-      const gatewayUrl = getEvidenceGatewayUrl(milestone.proofURI, gatewayBaseUrl);
-      const result = await verifyEvidenceFromGateway({
+      const evidenceUrl = getEvidencePublicUrl(milestone.proofURI);
+      const result = await verifyEvidenceFromStorage({
         expectedHash: milestone.proofHash,
-        gatewayUrl,
+        evidenceUrl,
       });
       setVerification({
         milestoneIndex: milestone.index,
@@ -295,27 +299,27 @@ function AgreementDetail() {
   if (agreement.status === 0 && refundAvailable) {
     nextStep = {
       title: 'A deadline refund is available',
-      detail: 'The current required checkpoint or final deadline has passed. Claiming returns all remaining escrow to the Shipper.',
+      detail: 'The Carrier missed the current evidence deadline. Any wallet may settle the refund transaction; the contract always returns all remaining escrow to the Shipper.',
     };
   } else if (agreement.status === 0 && currentMilestone?.state === 0) {
     nextStep = isCarrier
       ? {
           title: `Submit evidence for milestone ${currentMilestone.index + 1}`,
-          detail: 'Upload the receipt or photo to IPFS and confirm its immutable hash on-chain before the due date.',
+          detail: 'Upload the receipt or photo to Supabase and confirm its immutable hash on-chain before the due date.',
         }
       : {
           title: `Waiting for Carrier evidence on milestone ${currentMilestone.index + 1}`,
-          detail: 'Switch to the assigned Carrier wallet to submit proof. No ETH is released until the Shipper approves it.',
+          detail: 'Switch to the assigned Carrier wallet to submit proof. No ETH is released until the fixed Shipper confirms it.',
         };
   } else if (agreement.status === 0 && currentMilestone?.state === 1) {
     nextStep = isShipper
       ? {
-          title: `Verify milestone ${currentMilestone.index + 1} and release payment`,
+          title: `Verify and confirm milestone ${currentMilestone.index + 1}`,
           detail: 'Open the uploaded evidence, verify its file hash, then confirm the exact milestone payout in MetaMask.',
         }
       : {
-          title: 'Evidence submitted — awaiting Shipper approval',
-          detail: 'The proof is immutable. Switch to the Shipper wallet to review it and release the payout.',
+          title: 'Evidence submitted — awaiting Shipper confirmation',
+          detail: 'The proof is immutable. Only the Shipper stored when this agreement was created can confirm it and release the payout.',
         };
   } else if (agreement.status === 3) {
     nextStep = isArbitrator
@@ -381,17 +385,22 @@ function AgreementDetail() {
         </div>
         {error && <div className="notice error">{error}</div>}
 
-        {agreement.status === 0 && (isShipper || isCarrier) && (
+        {agreement.status === 0 && (isShipper || isCarrier || refundAvailable) && (
           <div className="action-panel">
             <h3>Agreement actions</h3>
             {refundAvailable && (
-              <button
-                className="btn btn-danger"
-                disabled={Boolean(busyAction)}
-                onClick={() => transact('refund', (contract) => contract.claimRefundAfterDeadline(id))}
-              >
-                {busyAction === 'refund' ? 'Refunding…' : 'Claim deadline refund'}
-              </button>
+              <>
+                <div className="notice">
+                  Settlement is permissionless, but Ethereum still requires a transaction to execute it. The recipient is fixed to the Shipper.
+                </div>
+                <button
+                  className="btn btn-danger"
+                  disabled={Boolean(busyAction)}
+                  onClick={() => transact('refund', (contract) => contract.claimRefundAfterDeadline(id))}
+                >
+                  {busyAction === 'refund' ? 'Settling refund…' : 'Settle deadline refund to Shipper'}
+                </button>
+              </>
             )}
             {!refundAvailable && <div className="inline-form">
               <input
@@ -469,7 +478,8 @@ function AgreementDetail() {
             const isCurrent = milestone.index === agreement.nextMilestone && agreement.status === 0;
             const milestoneExpired = nowSeconds > milestone.dueAt;
             const agreementExpired = nowSeconds > agreement.deadline;
-            const evidenceUrl = getEvidenceGatewayUrl(milestone.proofURI, gatewayBaseUrl);
+            const evidenceUrl = getEvidencePublicUrl(milestone.proofURI);
+            const evidenceStorageLabel = getEvidenceStorageLabel(milestone.proofURI);
             const verificationForMilestone = verification?.milestoneIndex === milestone.index
               ? verification
               : null;
@@ -492,12 +502,14 @@ function AgreementDetail() {
                       <small>Immutable evidence hash</small>
                       <code>{milestone.proofHash}</code>
                       {evidenceUrl ? (
-                        <a href={evidenceUrl} target="_blank" rel="noreferrer">Open receipt or photo from IPFS</a>
+                        <a href={evidenceUrl} target="_blank" rel="noreferrer">
+                          Open receipt or photo from {evidenceStorageLabel}
+                        </a>
                       ) : milestone.proofURI ? (
                         <>
                           <code>{milestone.proofURI}</code>
                           <span className="notice error">
-                            This is not a valid ChainCargo IPFS CID. Legacy or external evidence cannot be fetched or verified automatically.
+                            This is not a valid ChainCargo Supabase or legacy IPFS reference. External evidence cannot be fetched or verified automatically.
                           </span>
                         </>
                       ) : null}
@@ -506,9 +518,9 @@ function AgreementDetail() {
                   )}
                   {isCurrent && isCarrier && milestone.state === 0 && !milestoneExpired && !agreementExpired && (
                     <div className="evidence-form">
-                      {pinataConfigured === false && (
+                      {storageConfigured === false && (
                         <div className="notice error">
-                          Evidence upload is disabled because the Pinata server is not configured. Existing IPFS evidence remains viewable through the public gateway.
+                          Evidence upload is disabled. {storageConfigurationMessage} Existing public evidence remains viewable.
                         </div>
                       )}
                       <label>
@@ -518,7 +530,7 @@ function AgreementDetail() {
                           onChange={(event) => selectEvidenceFile(event.target.files?.[0])}
                           ref={evidenceFileInputRef}
                           type="file"
-                          disabled={!pinataConfigured}
+                          disabled={!storageConfigured}
                         />
                       </label>
                       {evidenceFile && (
@@ -529,13 +541,13 @@ function AgreementDetail() {
                       {uploadStatus && <div className="notice">{uploadStatus}</div>}
                       <button
                         className="btn btn-primary"
-                        disabled={Boolean(busyAction) || !evidenceFile || !pinataConfigured}
+                        disabled={Boolean(busyAction) || !evidenceFile || !storageConfigured}
                         onClick={() => submitEvidence(milestone)}
                       >
-                        {busyAction === 'proof' ? 'Uploading evidence…' : 'Upload to IPFS & submit proof'}
+                        {busyAction === 'proof' ? 'Uploading evidence…' : 'Upload to Supabase & submit proof'}
                       </button>
                       <small>
-                        The file is stored on Pinata IPFS. Only its CID and Keccak-256 hash are stored on-chain.
+                        The file is stored in the shared Supabase bucket. Only its storage reference and Keccak-256 hash are stored on-chain.
                       </small>
                     </div>
                   )}
@@ -544,7 +556,7 @@ function AgreementDetail() {
                   )}
                   {isCurrent && isShipper && milestone.state === 1 && (
                     <div className="evidence-form">
-                      <strong>Review and verify evidence before payout</strong>
+                      <strong>Review and verify evidence before confirmation</strong>
                       {evidenceUrl && (
                         <a className="btn btn-secondary" href={evidenceUrl} target="_blank" rel="noreferrer">
                           Open receipt or photo
@@ -562,22 +574,31 @@ function AgreementDetail() {
                       {verificationForMilestone?.status && verificationForMilestone.status !== 'checking' && (
                         <div className={`notice ${evidenceVerified ? 'success' : 'error'}`}>
                           {evidenceVerified
-                            ? 'Cryptographic verification passed. The IPFS file matches the immutable on-chain hash.'
+                            ? 'Cryptographic verification passed. The stored file matches the immutable on-chain hash.'
                             : verificationForMilestone.message || 'Verification failed. The downloaded file does not match the on-chain hash; do not release payment.'}
                         </div>
                       )}
                       <button
                         className="btn btn-primary"
                         disabled={Boolean(busyAction) || !evidenceVerified}
-                        onClick={() => transact('approve', (contract) => contract.approveMilestone(id, milestone.index))}
+                        onClick={() => transact(
+                          'confirm',
+                          (contract) => contract.confirmMilestone(
+                            id,
+                            milestone.index,
+                            milestone.proofHash,
+                          ),
+                        )}
                       >
-                        {busyAction === 'approve' ? 'Releasing payment…' : `Release verified payout · ${milestone.payoutEth} ETH`}
+                        {busyAction === 'confirm'
+                          ? 'Confirming & paying…'
+                          : `Confirm milestone & pay · ${milestone.payoutEth} ETH`}
                       </button>
                     </div>
                   )}
                   {isCurrent && isShipper && milestone.state === 1 && agreementExpired && (
                     <div className="notice">
-                      This proof was submitted before its deadline. You may still approve it, or open a dispute if the evidence is not acceptable.
+                      This proof was submitted before its deadline. You may still confirm it, or open a dispute if the evidence is not acceptable.
                     </div>
                   )}
                 </div>
@@ -585,7 +606,7 @@ function AgreementDetail() {
             );
           })}
         </div>
-        {currentMilestone && agreement.status === 0 && !isShipper && !isCarrier && (
+        {currentMilestone && agreement.status === 0 && !isShipper && !isCarrier && !refundAvailable && (
           <p className="notice">This agreement is read-only for the connected wallet.</p>
         )}
       </div>

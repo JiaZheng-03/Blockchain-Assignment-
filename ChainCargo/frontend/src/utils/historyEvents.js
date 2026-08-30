@@ -109,10 +109,10 @@ export function reconstructAgreementHistory(agreementId, agreement, milestones) 
     }
     if (approvedAt) {
       entries.push({
-        key: `state-approved-${id}-${index}`,
+        key: `state-confirmed-${id}-${index}`,
         agreementId: id,
-        name: 'MilestoneApproved',
-        detail: `${ethers.formatEther(milestone.payout)} ETH released and Carrier reputation awarded for milestone ${index + 1}`,
+        name: 'MilestoneConfirmed',
+        detail: `${ethers.formatEther(milestone.payout)} ETH released after Shipper confirmation; Carrier reputation awarded for milestone ${index + 1}`,
         transactionHash: null,
         timestamp: approvedAt,
       });

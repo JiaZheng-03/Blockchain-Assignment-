@@ -4,7 +4,7 @@ import { useWallet } from '../context/WalletContext';
 import { friendlyContractError, useContract } from '../context/ContractContext';
 import { useProfile } from '../hooks/useProfile';
 import {
-  MAX_MILESTONES,
+  FIXED_MILESTONES,
   MIN_SCHEDULE_BUFFER_MS,
   toDateTimeLocalValue,
   validateAgreementBasics,
@@ -15,8 +15,6 @@ import {
   readCarrierReputation,
 } from '../utils/carrierReputation';
 import { findAgreementCreatedId } from '../utils/contractReceipts';
-
-const emptyMilestone = () => ({ name: '', details: '', percentage: '', dueAt: '' });
 
 function CreateAgreement() {
   const transactionInFlight = useRef(false);
@@ -45,10 +43,9 @@ function CreateAgreement() {
     deadline: '',
     notes: '',
   });
-  const [milestones, setMilestones] = useState([
-    { name: 'Pickup confirmed', details: 'Cargo collected from shipper', percentage: '30', dueAt: '' },
-    { name: 'Final delivery', details: 'Cargo delivered to destination', percentage: '70', dueAt: '' },
-  ]);
+  const [milestones, setMilestones] = useState(
+    FIXED_MILESTONES.map((milestone) => ({ ...milestone, dueAt: '' })),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [registeredCarriers, setRegisteredCarriers] = useState([]);
@@ -181,31 +178,26 @@ function CreateAgreement() {
     return toDateTimeLocalValue(new Date(previousDueMs + 60_000));
   };
 
-  const addMilestone = () => {
-    if (milestones.length >= MAX_MILESTONES) {
-      setError(`An agreement can contain at most ${MAX_MILESTONES} milestones.`);
-      return;
-    }
-    setMilestones((current) => [...current, emptyMilestone()]);
-  };
-
-  const removeMilestone = (index) => {
-    setMilestones((current) => current.filter((_, itemIndex) => itemIndex !== index));
-  };
-
   const moveToStep = (nextStep) => {
     setError('');
     setStep(nextStep);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const continueToMilestones = () => {
+  const continueToMilestones = async () => {
     try {
+      setBusy(true);
       setError('');
       validateAgreementBasics({ form, account });
+      const contract = await getReadContract();
+      if (!await contract.isAgreementNameAvailable(account, form.title)) {
+        throw new Error('You already created an agreement with this name. Choose a different agreement name.');
+      }
       moveToStep(2);
     } catch (validationError) {
-      setError(validationError.message);
+      setError(friendlyContractError(validationError));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -250,13 +242,19 @@ function CreateAgreement() {
         account,
       });
       const readContract = await getReadContract();
-      const carrierProfile = await readContract.getProfile(form.carrier);
+      const [carrierProfile, nameAvailable] = await Promise.all([
+        readContract.getProfile(form.carrier),
+        readContract.isAgreementNameAvailable(account, form.title),
+      ]);
       if (Number(carrierProfile.role) !== 2) {
         throw new Error('The carrier wallet must register as a Carrier before you create the agreement.');
       }
+      if (!nameAvailable) {
+        throw new Error('You already created an agreement with this name. Choose a different agreement name.');
+      }
       const contract = await getWriteContract();
       const transaction = await contract.createAgreement(
-        form.title,
+        form.title.trim(),
         form.carrier,
         deadline,
         form.notes,
@@ -306,7 +304,7 @@ function CreateAgreement() {
       <div className="panel access-panel">
         <span className="eyebrow">Current role: {profile?.roleLabel}</span>
         <h2>Only Shippers create agreements</h2>
-        <p>Carriers are assigned by a Shipper. They submit milestone evidence and receive payouts after approval.</p>
+        <p>Carriers are assigned by a Shipper. They submit milestone evidence and receive payouts after Shipper confirmation.</p>
         <button className="btn btn-primary" onClick={switchWallet} disabled={isConnecting}>
           {isConnecting ? 'Open MetaMask…' : 'Switch to your Shipper wallet'}
         </button>
@@ -314,10 +312,6 @@ function CreateAgreement() {
     );
   }
 
-  const allocationTotal = milestones.reduce(
-    (sum, milestone) => sum + (Number(milestone.percentage) || 0),
-    0,
-  );
   const selectedCarrier = registeredCarriers.find(
     (carrier) => carrier.address.toLowerCase() === form.carrier.toLowerCase(),
   );
@@ -326,7 +320,7 @@ function CreateAgreement() {
     <div className="form-card agreement-wizard">
       <span className="eyebrow">Shipper workflow</span>
       <h2>Create New Agreement</h2>
-      <p>Define the shipment, configure payment milestones, then review everything before funding escrow.</p>
+      <p>Define the shipment, schedule the fixed 30%/70% milestones, then review everything before funding escrow.</p>
 
       <div className="wizard-steps" aria-label="Agreement creation progress">
         {['Agreement Details', 'Milestones', 'Review & Fund'].map((label, index) => {
@@ -354,7 +348,11 @@ function CreateAgreement() {
               <h3>Agreement Details</h3>
               <p>Enter the parties, total payload/escrow value, and final shipment deadline.</p>
             </div>
-            <label>Agreement Name<input name="title" value={form.title} onChange={updateForm} required placeholder="Shipment #001" /></label>
+            <label>
+              Agreement Name
+              <input name="title" value={form.title} onChange={updateForm} required placeholder="Shipment #001" />
+              <small>Names are unique for this Shipper wallet, ignoring capitalization and repeated spaces.</small>
+            </label>
             <label>
               Registered Carrier
               <select
@@ -388,7 +386,7 @@ function CreateAgreement() {
                       : `${selectedCarrier.reputation.toString()} points · ${selectedCarrier.reputationTier}`}
                   </strong>
                 </span>
-                <small>Earned only when Shippers approve completed milestones.</small>
+                <small>Earned only when Shippers confirm completed milestones.</small>
               </div>
             )}
             {carrierDirectoryError && <div className="notice error">{carrierDirectoryError}</div>}
@@ -410,7 +408,9 @@ function CreateAgreement() {
             </label>
             <label>Agreement Notes<textarea name="notes" value={form.notes} onChange={updateForm} rows="4" placeholder="Add shipment instructions" /></label>
             <div className="wizard-actions">
-              <button className="btn btn-primary" type="button" onClick={continueToMilestones}>Continue to Milestones</button>
+              <button className="btn btn-primary" disabled={busy} type="button" onClick={continueToMilestones}>
+                {busy ? 'Checking name…' : 'Continue to Milestones'}
+              </button>
             </div>
           </section>
         )}
@@ -419,11 +419,10 @@ function CreateAgreement() {
           <section className="wizard-section">
             <div className="section-heading">
               <div>
-                <h3>Payment Milestones</h3>
-                <p>Split the {form.totalAmount || '0'} ETH escrow across verifiable shipment checkpoints.</p>
+                <h3>Fixed Payment Milestones</h3>
+                <p>The contract always releases 30% at cargo pickup and the remaining 70% at final delivery.</p>
                 <small>Due dates must be chronological and no later than the final deadline.</small>
               </div>
-              <button className="btn btn-secondary" disabled={milestones.length >= MAX_MILESTONES} type="button" onClick={addMilestone}>Add milestone</button>
             </div>
             {milestones.map((milestone, index) => (
               <div className="milestone-editor" key={`milestone-${index}`}>
@@ -431,10 +430,11 @@ function CreateAgreement() {
                   <strong>Milestone {index + 1}</strong>
                   <span className="badge">{milestone.percentage || 0}% of escrow</span>
                 </div>
-                <label>Name<input required value={milestone.name} onChange={(event) => updateMilestone(index, 'name', event.target.value)} /></label>
-                <label>Evidence required<input required value={milestone.details} onChange={(event) => updateMilestone(index, 'details', event.target.value)} /></label>
-                <div className="grid grid-2">
-                  <label>Payout (%)<input required min="1" max="100" type="number" value={milestone.percentage} onChange={(event) => updateMilestone(index, 'percentage', event.target.value)} /></label>
+                <div className="notice">
+                  <strong>{milestone.name}</strong>
+                  <p>{milestone.details}</p>
+                </div>
+                <div>
                   <label>
                     Due date
                     <input
@@ -453,12 +453,11 @@ function CreateAgreement() {
                     </small>
                   </label>
                 </div>
-                {milestones.length > 1 && <button className="text-button danger" type="button" onClick={() => removeMilestone(index)}>Remove</button>}
               </div>
             ))}
-            <div className={`percentage-summary ${allocationTotal === 100 ? 'valid' : 'invalid'}`}>
+            <div className="percentage-summary valid">
               <span>Total payout allocation</span>
-              <strong>{allocationTotal}%</strong>
+              <strong>100% · fixed</strong>
             </div>
             <div className="wizard-actions">
               <button className="btn btn-secondary" type="button" onClick={() => moveToStep(1)}>Back to Details</button>
