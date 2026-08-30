@@ -7,7 +7,11 @@ import { useProfile } from '../hooks/useProfile';
 function Register() {
   const transactionInFlight = useRef(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const requestedRole = searchParams.get('role') === 'carrier' ? '2' : '1';
+  const requestedRole = searchParams.get('role') === 'carrier'
+    ? '2'
+    : searchParams.get('role') === 'arbitrator'
+      ? '3'
+      : '1';
   const {
     account,
     authorizedAccountCount,
@@ -24,7 +28,7 @@ function Register() {
     switchToExpectedNetwork,
     waitForTransaction,
   } = useContract();
-  const { isArbitrator, isRegistered, profile, loading } = useProfile();
+  const { isDesignatedArbitrator, isRegistered, profile, loading } = useProfile();
   const [name, setName] = useState('');
   const [role, setRole] = useState(requestedRole);
   const [busy, setBusy] = useState(false);
@@ -32,12 +36,14 @@ function Register() {
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    setRole(requestedRole);
-  }, [requestedRole]);
+    setRole(requestedRole === '3' && !isDesignatedArbitrator ? '1' : requestedRole);
+  }, [isDesignatedArbitrator, requestedRole]);
 
   const chooseRole = (nextRole) => {
     setRole(nextRole);
-    setSearchParams({ role: nextRole === '1' ? 'shipper' : 'carrier' });
+    setSearchParams({
+      role: nextRole === '1' ? 'shipper' : nextRole === '2' ? 'carrier' : 'arbitrator',
+    });
     setError('');
   };
 
@@ -68,7 +74,8 @@ function Register() {
       setSuccess('');
       const contract = await getWriteContract();
       await waitForTransaction(await contract.register(name.trim(), Number(role)));
-      setSuccess(`Registration confirmed. This wallet is now a ${role === '1' ? 'Shipper' : 'Carrier'}.`);
+      const roleLabel = role === '1' ? 'Shipper' : role === '2' ? 'Carrier' : 'Arbitrator';
+      setSuccess(`Registration confirmed. This wallet is now an ${roleLabel}.`);
     } catch (registerError) {
       setError(friendlyContractError(registerError));
     } finally {
@@ -121,19 +128,7 @@ function Register() {
           </div>
         )}
 
-        {isArbitrator ? (
-          <>
-            <div className="notice success">
-              This wallet is the contract <strong>Arbitrator</strong>. It does not need participant registration.
-            </div>
-            <div className="next-actions">
-              <Link className="btn btn-primary" to="/dashboard">Open arbitration dashboard</Link>
-              <button className="btn btn-secondary" onClick={switchWallet} disabled={isConnecting}>
-                Switch to a participant wallet
-              </button>
-            </div>
-          </>
-        ) : isRegistered ? (
+        {isRegistered ? (
           <>
             <div className="notice success">
               This wallet is registered as <strong>{profile.roleLabel}</strong>: {profile.name}.
@@ -164,11 +159,18 @@ function Register() {
                   <strong>Carrier</strong>
                   <small>Completes milestones and receives ETH.</small>
                 </button>
+                {isDesignatedArbitrator && (
+                  <button className={`role-card ${role === '3' ? 'selected' : ''}`} type="button" onClick={() => chooseRole('3')}>
+                    <span className="role-icon">A</span>
+                    <strong>Arbitrator</strong>
+                    <small>Resolves disputed escrow as the contract deployer.</small>
+                  </button>
+                )}
               </div>
             </div>
             <label>
               Business / Display Name
-              <input value={name} onChange={(event) => setName(event.target.value)} required placeholder={role === '1' ? 'Acme Imports' : 'Swift Freight'} />
+              <input value={name} onChange={(event) => setName(event.target.value)} required placeholder={role === '1' ? 'Acme Imports' : role === '2' ? 'Swift Freight' : 'ChainCargo Arbitration'} />
             </label>
             {isConnected && (
               <button className="text-button" type="button" onClick={switchWallet} disabled={isConnecting}>
@@ -193,7 +195,7 @@ function Register() {
                 ? 'Connect MetaMask first'
                 : busy
                   ? 'Registering on-chain…'
-                  : `Register as ${role === '1' ? 'Shipper' : 'Carrier'}`}
+                  : `Register as ${role === '1' ? 'Shipper' : role === '2' ? 'Carrier' : 'Arbitrator'}`}
             </button>
           </form>
         )}

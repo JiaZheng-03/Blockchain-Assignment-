@@ -9,6 +9,7 @@ describe("LogisticsEscrow", function () {
     const escrow = await Escrow.deploy();
     await escrow.waitForDeployment();
 
+    await escrow.connect(arbitrator).register("ChainCargo Arbitration", 3);
     await escrow.connect(shipper).register("Acme Imports", 1);
     await escrow.connect(carrier).register("Swift Freight", 2);
     await escrow.connect(secondShipper).register("Second Shipper", 1);

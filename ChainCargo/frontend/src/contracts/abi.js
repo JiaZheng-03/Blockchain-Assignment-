@@ -75,6 +75,6 @@ export const ESCROW_ABI = [
   'event DisputeResolved(uint256 indexed agreementId,uint256 shipperAmount,uint256 carrierAmount)',
 ];
 
-export const ROLE_LABELS = ['Unregistered', 'Shipper', 'Carrier'];
+export const ROLE_LABELS = ['Unregistered', 'Shipper', 'Carrier', 'Arbitrator'];
 export const AGREEMENT_STATUS = ['Active', 'Completed', 'Refunded', 'Disputed', 'Resolved'];
 export const MILESTONE_STATUS = ['Pending', 'Evidence submitted', 'Confirmed & paid'];
