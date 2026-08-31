@@ -1,7 +1,7 @@
 {
-  "address": "0x8656317679e307549f17a8Ff5316792Cb1c4EA00",
+  "address": "0x1Cf8Ae2fFaB5194f458be5d41C515de4F7413c64",
   "chainId": 11155111,
-  "deploymentBlock": 11598265,
+  "deploymentBlock": 11604442,
   "abi": [
     {
       "inputs": [],
@@ -148,27 +148,6 @@
         }
       ],
       "name": "InvalidMilestoneCount",
-      "type": "error"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "milestoneIndex",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "expectedPayout",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "providedPayout",
-          "type": "uint256"
-        }
-      ],
-      "name": "InvalidMilestonePayout",
       "type": "error"
     },
     {
@@ -687,7 +666,7 @@
     },
     {
       "inputs": [],
-      "name": "PICKUP_PAYMENT_PERCENT",
+      "name": "MIN_SCHEDULE_DELAY",
       "outputs": [
         {
           "internalType": "uint256",
