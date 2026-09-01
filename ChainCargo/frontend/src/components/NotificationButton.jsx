@@ -40,10 +40,18 @@ function NotificationButton() {
   }, []);
 
   const alerts = useMemo(() => agreements
-    .filter((agreement) => agreement.status === 0 && agreement.currentMilestoneState === 0)
+    .filter((agreement) => agreement.status === 0 && [0, 1].includes(agreement.currentMilestoneState))
     .map((agreement) => {
-      const deadline = getAgreementActionDeadline(agreement);
-      return { agreement, deadline, state: getDeadlineState(deadline, nowSeconds) };
+      const reviewPending = agreement.currentMilestoneState === 1;
+      const deadline = reviewPending
+        ? agreement.currentMilestoneSubmittedAt + (2 * 24 * 60 * 60)
+        : getAgreementActionDeadline(agreement);
+      return {
+        agreement,
+        deadline,
+        kind: reviewPending ? 'review' : 'evidence',
+        state: getDeadlineState(deadline, nowSeconds),
+      };
     })
     .filter(({ state }) => ['warning', 'critical', 'overdue'].includes(state.level))
     .sort((left, right) => left.deadline - right.deadline), [agreements, nowSeconds]);
@@ -52,24 +60,33 @@ function NotificationButton() {
     if (permission !== 'granted'
       || window.localStorage.getItem(NOTIFICATION_PREFERENCE_KEY) !== 'enabled') return;
 
-    alerts.forEach(({ agreement, deadline, state }) => {
+    alerts.forEach(({ agreement, deadline, kind, state }) => {
       const alertKey = [
         NOTIFICATION_ALERT_PREFIX,
         contractAddress,
         account,
         agreement.id,
         deadline,
+        kind,
         state.level,
       ].join(':');
       if (window.localStorage.getItem(alertKey)) return;
 
       const overdue = state.level === 'overdue';
-      const title = overdue
-        ? `Agreement #${agreement.id} deadline missed`
-        : `Agreement #${agreement.id} deadline approaching`;
-      const body = overdue
-        ? `${agreement.title}: remaining escrow is ready for an on-chain refund to the Shipper.`
-        : `${agreement.title}: ${state.countdown} for ${agreement.currentMilestoneName || 'the current milestone'}.`;
+      const title = kind === 'review'
+        ? overdue
+          ? `Agreement #${agreement.id} review period ended`
+          : `Agreement #${agreement.id} evidence review ending`
+        : overdue
+          ? `Agreement #${agreement.id} deadline missed`
+          : `Agreement #${agreement.id} deadline approaching`;
+      const body = kind === 'review'
+        ? overdue
+          ? `${agreement.title}: the submitted milestone can now be finalized and paid to the Carrier.`
+          : `${agreement.title}: ${state.countdown} in the Shipper review period.`
+        : overdue
+          ? `${agreement.title}: remaining escrow is ready for an on-chain refund to the Shipper.`
+          : `${agreement.title}: ${state.countdown} for ${agreement.currentMilestoneName || 'the current milestone'}.`;
       try {
         new window.Notification(title, { body, tag: alertKey });
         window.localStorage.setItem(alertKey, 'sent');
@@ -130,18 +147,22 @@ function NotificationButton() {
             <p className="notification-empty">No deadline alerts right now.</p>
           ) : (
             <div className="notification-list">
-              {alerts.map(({ agreement, deadline, state }) => (
+              {alerts.map(({ agreement, deadline, kind, state }) => (
                 <Link
                   className={`notification-item deadline-${state.level}`}
-                  key={`${agreement.id}-${deadline}-${state.level}`}
+                  key={`${agreement.id}-${deadline}-${kind}-${state.level}`}
                   onClick={() => setOpen(false)}
                   to={`/agreement/${agreement.id}`}
                 >
                   <strong>{agreement.title}</strong>
                   <span>
-                    {state.level === 'overdue'
-                      ? 'Deadline missed. Refund is ready to settle on-chain.'
-                      : `${state.countdown} remaining for ${agreement.currentMilestoneName || 'the current milestone'}.`}
+                    {kind === 'review'
+                      ? state.level === 'overdue'
+                        ? 'Review period ended. The milestone is ready to finalize.'
+                        : `${state.countdown} in the Shipper evidence review period.`
+                      : state.level === 'overdue'
+                        ? 'Deadline missed. Refund is ready to settle on-chain.'
+                        : `${state.countdown} remaining for ${agreement.currentMilestoneName || 'the current milestone'}.`}
                   </span>
                 </Link>
               ))}

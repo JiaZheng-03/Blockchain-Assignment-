@@ -58,6 +58,9 @@ export function useAgreements({ arbitration = false } = {}) {
               currentMilestoneDueAt: currentMilestone ? Number(currentMilestone.dueAt) : null,
               currentMilestoneName: currentMilestone?.name || '',
               currentMilestoneState: currentMilestone ? Number(currentMilestone.state) : null,
+              currentMilestoneSubmittedAt: currentMilestone
+                ? Number(currentMilestone.submittedAt)
+                : null,
             };
           }),
         );

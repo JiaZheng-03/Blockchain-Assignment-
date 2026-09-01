@@ -1104,6 +1104,12 @@ textarea:focus {
   color: #065f46;
 }
 
+.notice.warning {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
 .notice[data-toast-converted='true'] {
   display: none;
 }

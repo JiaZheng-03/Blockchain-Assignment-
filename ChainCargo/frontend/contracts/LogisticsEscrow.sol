@@ -89,13 +89,15 @@ contract LogisticsEscrow {
     error EvidenceMissing();
     error EvidenceHashMismatch(bytes32 storedHash, bytes32 suppliedHash);
     error PaymentAlreadyReleased();
+    error ReviewPeriodActive(uint64 availableAt);
 
     address public immutable arbitrator;
-    uint256 public constant CONTRACT_VERSION = 3;
+    uint256 public constant CONTRACT_VERSION = 4;
     string public constant EVIDENCE_URI_SCHEME = "supabase://";
     uint256 public constant MAX_MILESTONES = 2;
     uint256 public constant REPUTATION_POINTS_PER_MILESTONE = 10;
     uint256 public constant MIN_SCHEDULE_DELAY = 1 hours;
+    uint256 public constant EVIDENCE_REVIEW_PERIOD = 2 days;
     uint256 public constant MAX_PROFILE_NAME_LENGTH = 100;
     uint256 public constant MAX_AGREEMENT_TITLE_LENGTH = 200;
     uint256 public constant MAX_AGREEMENT_NOTES_LENGTH = 2_000;
@@ -147,6 +149,12 @@ contract LogisticsEscrow {
         uint256 indexed milestoneIndex,
         uint256 points,
         uint256 totalPoints
+    );
+    event EvidenceRejected(
+        uint256 indexed agreementId,
+        uint256 indexed milestoneIndex,
+        address indexed shipper,
+        uint256 refundAmount
     );
     event AgreementCompleted(uint256 indexed agreementId);
     event Refunded(uint256 indexed agreementId, address indexed shipper, uint256 amount);
@@ -339,7 +347,7 @@ contract LogisticsEscrow {
         uint256 milestoneIndex,
         bytes32 expectedEvidenceHash
     ) external agreementExists(agreementId) nonReentrant {
-        _confirmMilestone(agreementId, milestoneIndex, expectedEvidenceHash);
+        _confirmMilestone(agreementId, milestoneIndex, expectedEvidenceHash, true);
     }
 
     /// @notice Compatibility wrapper for clients deployed before confirmMilestone was introduced.
@@ -349,16 +357,54 @@ contract LogisticsEscrow {
     ) external agreementExists(agreementId) nonReentrant {
         if (milestoneIndex >= milestones[agreementId].length) revert InvalidMilestone();
         bytes32 expectedEvidenceHash = milestones[agreementId][milestoneIndex].proofHash;
-        _confirmMilestone(agreementId, milestoneIndex, expectedEvidenceHash);
+        _confirmMilestone(agreementId, milestoneIndex, expectedEvidenceHash, true);
+    }
+
+    /// @notice The Shipper may reject submitted evidence and recover all remaining escrow.
+    function rejectEvidence(
+        uint256 agreementId,
+        uint256 milestoneIndex
+    ) external agreementExists(agreementId) nonReentrant {
+        Agreement storage agreement = agreements[agreementId];
+        if (agreement.shipper != msg.sender) revert Unauthorized();
+        if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
+        if (milestoneIndex != agreement.nextMilestone) revert InvalidMilestone();
+        if (milestoneIndex >= milestones[agreementId].length) revert InvalidMilestone();
+
+        Milestone storage milestone = milestones[agreementId][milestoneIndex];
+        if (milestone.state != MilestoneState.Submitted) revert EvidenceMissing();
+
+        uint256 refund = agreement.remainingAmount;
+        agreement.remainingAmount = 0;
+        agreement.status = AgreementStatus.Refunded;
+        emit EvidenceRejected(agreementId, milestoneIndex, msg.sender, refund);
+        emit Refunded(agreementId, agreement.shipper, refund);
+        _sendValue(agreement.shipper, refund);
+    }
+
+    /// @notice Anyone may release a submitted milestone after the Shipper's review window expires.
+    function finalizeMilestoneAfterReviewTimeout(
+        uint256 agreementId,
+        uint256 milestoneIndex
+    ) external agreementExists(agreementId) nonReentrant {
+        if (milestoneIndex >= milestones[agreementId].length) revert InvalidMilestone();
+        Milestone storage milestone = milestones[agreementId][milestoneIndex];
+        if (milestone.state != MilestoneState.Submitted || milestone.submittedAt == 0) {
+            revert EvidenceMissing();
+        }
+        uint64 availableAt = milestone.submittedAt + uint64(EVIDENCE_REVIEW_PERIOD);
+        if (block.timestamp < availableAt) revert ReviewPeriodActive(availableAt);
+        _confirmMilestone(agreementId, milestoneIndex, milestone.proofHash, false);
     }
 
     function _confirmMilestone(
         uint256 agreementId,
         uint256 milestoneIndex,
-        bytes32 expectedEvidenceHash
+        bytes32 expectedEvidenceHash,
+        bool requireShipper
     ) private {
         Agreement storage agreement = agreements[agreementId];
-        if (agreement.shipper != msg.sender) revert Unauthorized();
+        if (requireShipper && agreement.shipper != msg.sender) revert Unauthorized();
         if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
         if (agreement.totalAmount == 0 || agreement.remainingAmount == 0) revert InvalidStatus();
         if (milestoneIndex >= milestones[agreementId].length) revert InvalidMilestone();

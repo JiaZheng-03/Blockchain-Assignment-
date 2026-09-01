@@ -61,6 +61,8 @@ function describeCustomError(parsed) {
       return `Milestone ${index} cannot be later than the final deadline.`;
     case 'PayoutTotalMismatch':
       return 'Milestone payouts must exactly equal the deposited escrow amount.';
+    case 'ReviewPeriodActive':
+      return `The evidence review period ends at ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
     case 'InputTooLong':
       return `A text value is too long. The contract allows at most ${parsed.args.maximumLength} bytes.`;
     default:

@@ -14,7 +14,11 @@ import {
   validateEvidenceFileMetadata,
   verifyEvidenceFromStorage,
 } from '../utils/evidenceStorage';
-import { getDeadlineState, isRefundButtonAvailable } from '../utils/deadlineAlerts';
+import {
+  formatDeadlineDuration,
+  getDeadlineState,
+  isRefundButtonAvailable,
+} from '../utils/deadlineAlerts';
 import { showActionResult } from '../utils/actionResult';
 import {
   decodeEscrowEvent,
@@ -491,6 +495,9 @@ function AgreementDetail() {
               ? verification
               : null;
             const evidenceVerified = verificationForMilestone?.status === 'verified';
+            const reviewDeadline = milestone.submittedAt + (2 * 24 * 60 * 60);
+            const reviewSecondsRemaining = reviewDeadline - nowSeconds;
+            const reviewExpired = milestone.state === 1 && reviewSecondsRemaining <= 0;
             const percentage = Number((milestone.payout * 10000n) / agreement.totalAmount) / 100;
             return (
               <article className={`milestone-row state-${milestone.state}`} key={milestone.index}>
@@ -564,6 +571,11 @@ function AgreementDetail() {
                   {isCurrent && isShipper && milestone.state === 1 && (
                     <div className="evidence-form">
                       <strong>Review and verify evidence before confirmation</strong>
+                      <div className={`notice ${reviewExpired ? 'warning' : ''}`}>
+                        {reviewExpired
+                          ? 'The 2-day review period has ended. Anyone may now finalize this milestone and pay the Carrier.'
+                          : `${formatDeadlineDuration(reviewSecondsRemaining)} remain in the Shipper review period.`}
+                      </div>
                       {evidenceUrl && (
                         <a className="btn btn-secondary" href={evidenceUrl} target="_blank" rel="noreferrer">
                           Open receipt or photo
@@ -600,6 +612,47 @@ function AgreementDetail() {
                         {busyAction === 'confirm'
                           ? 'Confirming & paying…'
                           : `Confirm milestone & pay · ${milestone.payoutEth} ETH`}
+                      </button>
+                      <button
+                        className="btn btn-danger"
+                        disabled={Boolean(busyAction)}
+                        onClick={() => transact(
+                          'reject',
+                          (contract) => contract.rejectEvidence(id, milestone.index),
+                        )}
+                        type="button"
+                      >
+                        {busyAction === 'reject'
+                          ? 'Rejecting & refunding…'
+                          : `Reject evidence & refund ${agreement.remainingEth} ETH`}
+                      </button>
+                    </div>
+                  )}
+                  {isCurrent && milestone.state === 1 && !isShipper && !reviewExpired && (
+                    <div className="notice">
+                      The Shipper has {formatDeadlineDuration(reviewSecondsRemaining)} remaining to review this evidence.
+                    </div>
+                  )}
+                  {isCurrent && milestone.state === 1 && reviewExpired && (
+                    <div className="evidence-form">
+                      <div className="notice success">
+                        The 2-day review period ended without approval or rejection. This milestone can now proceed.
+                      </div>
+                      <button
+                        className="btn btn-primary"
+                        disabled={Boolean(busyAction)}
+                        onClick={() => transact(
+                          'timeout-finalize',
+                          (contract) => contract.finalizeMilestoneAfterReviewTimeout(
+                            id,
+                            milestone.index,
+                          ),
+                        )}
+                        type="button"
+                      >
+                        {busyAction === 'timeout-finalize'
+                          ? 'Finalizing & paying…'
+                          : `Finalize after timeout & pay ${milestone.payoutEth} ETH`}
                       </button>
                     </div>
                   )}

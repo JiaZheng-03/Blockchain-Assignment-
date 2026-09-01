@@ -173,6 +173,48 @@ describe("LogisticsEscrow", function () {
       .to.be.revertedWithCustomError(escrow, "Unauthorized");
   });
 
+  it("lets only the Shipper reject submitted evidence and refunds all remaining escrow", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    const { totalWei } = await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("rejected evidence"));
+    await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
+
+    await expect(escrow.connect(outsider).rejectEvidence(0, 0))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(shipper).rejectEvidence(0, 0))
+      .to.emit(escrow, "EvidenceRejected")
+      .withArgs(0, 0, shipper.address, totalWei)
+      .and.to.emit(escrow, "Refunded")
+      .withArgs(0, shipper.address, totalWei);
+
+    const agreement = await escrow.getAgreement(0);
+    expect(agreement.status).to.equal(2);
+    expect(agreement.remainingAmount).to.equal(0);
+    expect(await ethers.provider.getBalance(await escrow.getAddress())).to.equal(0);
+  });
+
+  it("allows permissionless milestone finalization after two days without Shipper action", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    const { payouts } = await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("timed out review"));
+    await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
+    const submittedAt = (await escrow.getMilestones(0))[0].submittedAt;
+    const availableAt = submittedAt + (2n * 24n * 60n * 60n);
+
+    await expect(escrow.connect(outsider).finalizeMilestoneAfterReviewTimeout(0, 0))
+      .to.be.revertedWithCustomError(escrow, "ReviewPeriodActive")
+      .withArgs(availableAt);
+
+    await time.increaseTo(availableAt);
+    await expect(escrow.connect(outsider).finalizeMilestoneAfterReviewTimeout(0, 0))
+      .to.emit(escrow, "MilestoneConfirmed")
+      .withArgs(0, 0, evidenceHash, outsider.address, payouts[0]);
+
+    const agreement = await escrow.getAgreement(0);
+    expect(agreement.nextMilestone).to.equal(1);
+    expect(agreement.remainingAmount).to.equal(payouts[1]);
+  });
+
   it("lets only the fixed Shipper confirm matching evidence and releases pickup 30%", async function () {
     const { escrow, shipper, carrier } = await deployFixture();
     const { payouts } = await createAgreement(escrow, shipper, carrier);
