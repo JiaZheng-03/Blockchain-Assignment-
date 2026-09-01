@@ -30,7 +30,6 @@ function ChecklistItem({ complete, number, title, children }) {
 function Setup() {
   const {
     account,
-    connectWallet,
     error: walletError,
     formatAddress,
     isConnected,
@@ -100,9 +99,7 @@ function Setup() {
               Install MetaMask
             </a>
           ) : !isConnected ? (
-            <button className="btn btn-primary" disabled={isConnecting} onClick={connectWallet} type="button">
-              {isConnecting ? 'Waiting for MetaMask…' : 'Connect MetaMask'}
-            </button>
+            <Link className="btn btn-primary" to="/login">Open wallet access</Link>
           ) : (
             <button className="btn btn-secondary" disabled={isConnecting} onClick={switchWallet} type="button">
               Choose another authorized account

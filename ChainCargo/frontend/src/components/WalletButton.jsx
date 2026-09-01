@@ -1,13 +1,14 @@
+import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 
 function WalletButton() {
+  const navigate = useNavigate();
   const {
     account,
-    connectWallet,
-    switchWallet,
-    authorizedAccountCount,
+    disconnectWallet,
     isConnecting,
     isConnected,
+    isAuthenticated,
     formatAddress,
     error,
   } = useWallet();
@@ -17,10 +18,10 @@ function WalletButton() {
       return;
     }
 
-    if (isConnected) {
-      switchWallet();
+    if (isConnected && isAuthenticated) {
+      disconnectWallet();
     } else {
-      connectWallet();
+      navigate('/login');
     }
   };
 
@@ -29,9 +30,11 @@ function WalletButton() {
       <button className="btn btn-secondary" onClick={handleClick} disabled={isConnecting} type="button">
         {isConnecting
           ? 'Choose account in MetaMask…'
+          : isConnected && !isAuthenticated
+              ? `Login with Wallet · ${formatAddress(account)}`
           : isConnected
-            ? `${authorizedAccountCount > 1 ? 'Switch account' : 'Add another account'} · ${formatAddress(account)}`
-            : 'Connect Wallet'}
+            ? `Logout · ${formatAddress(account)}`
+            : 'Connect to MetaMask'}
       </button>
       {error ? <p className="wallet-error">{error}</p> : null}
     </div>

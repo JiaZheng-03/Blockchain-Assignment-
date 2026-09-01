@@ -5,9 +5,8 @@ import { useProfile } from '../hooks/useProfile';
 
 function WalletGate() {
   const {
-    connectWallet,
     isConnected,
-    isConnecting,
+    isAuthenticated,
   } = useWallet();
   const {
     deploymentStatus,
@@ -24,9 +23,18 @@ function WalletGate() {
         <span className="eyebrow">Wallet required</span>
         <h2>Connect MetaMask to continue</h2>
         <p>Your wallet address is your ChainCargo login and identifies your on-chain role.</p>
-        <button className="btn btn-primary" disabled={isConnecting} onClick={connectWallet} type="button">
-          {isConnecting ? 'Waiting for MetaMask…' : 'Connect MetaMask'}
-        </button>
+        <Link className="btn btn-primary" to="/login">Open wallet access</Link>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="panel access-panel">
+        <span className="eyebrow">Wallet login required</span>
+        <h2>Sign in with your connected wallet</h2>
+        <p>Sign a free message in MetaMask to prove that you control this public address.</p>
+        <Link className="btn btn-primary" to="/login">Open wallet access</Link>
       </div>
     );
   }

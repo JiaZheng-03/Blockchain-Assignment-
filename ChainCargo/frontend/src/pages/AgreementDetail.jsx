@@ -330,7 +330,7 @@ function AgreementDetail() {
         }
       : {
           title: 'Evidence submitted — awaiting Shipper confirmation',
-          detail: 'The proof is immutable. Only the Shipper stored when this agreement was created can confirm it and release the payout.',
+          detail: 'The proof is immutable. If the Shipper takes no action for 2 days, the Carrier may escalate it to the Arbitrator.',
         };
   } else if (agreement.status === 3) {
     nextStep = isArbitrator
@@ -413,7 +413,7 @@ function AgreementDetail() {
                 </button>
               </>
             )}
-            {!refundAvailable && <div className="inline-form">
+            {!refundAvailable && !(isCarrier && currentMilestone?.state === 1) && <div className="inline-form">
               <input
                 value={disputeReason}
                 onChange={(event) => setDisputeReason(event.target.value)}
@@ -573,7 +573,7 @@ function AgreementDetail() {
                       <strong>Review and verify evidence before confirmation</strong>
                       <div className={`notice ${reviewExpired ? 'warning' : ''}`}>
                         {reviewExpired
-                          ? 'The 2-day review period has ended. Anyone may now finalize this milestone and pay the Carrier.'
+                          ? 'The 2-day review period has ended. The Carrier may now request Arbitrator review.'
                           : `${formatDeadlineDuration(reviewSecondsRemaining)} remain in the Shipper review period.`}
                       </div>
                       {evidenceUrl && (
@@ -633,26 +633,26 @@ function AgreementDetail() {
                       The Shipper has {formatDeadlineDuration(reviewSecondsRemaining)} remaining to review this evidence.
                     </div>
                   )}
-                  {isCurrent && milestone.state === 1 && reviewExpired && (
+                  {isCurrent && isCarrier && milestone.state === 1 && reviewExpired && (
                     <div className="evidence-form">
-                      <div className="notice success">
-                        The 2-day review period ended without approval or rejection. This milestone can now proceed.
+                      <div className="notice warning">
+                        The Shipper did not approve or reject within 2 days. Submit this case to the Arbitrator for a decision.
                       </div>
                       <button
                         className="btn btn-primary"
                         disabled={Boolean(busyAction)}
                         onClick={() => transact(
-                          'timeout-finalize',
-                          (contract) => contract.finalizeMilestoneAfterReviewTimeout(
+                          'timeout-arbitration',
+                          (contract) => contract.requestArbitrationAfterReviewTimeout(
                             id,
                             milestone.index,
                           ),
                         )}
                         type="button"
                       >
-                        {busyAction === 'timeout-finalize'
-                          ? 'Finalizing & paying…'
-                          : `Finalize after timeout & pay ${milestone.payoutEth} ETH`}
+                        {busyAction === 'timeout-arbitration'
+                          ? 'Submitting to Arbitrator...'
+                          : 'Request Arbitrator action'}
                       </button>
                     </div>
                   )}

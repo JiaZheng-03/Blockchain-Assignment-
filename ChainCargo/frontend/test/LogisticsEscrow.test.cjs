@@ -193,26 +193,32 @@ describe("LogisticsEscrow", function () {
     expect(await ethers.provider.getBalance(await escrow.getAddress())).to.equal(0);
   });
 
-  it("allows permissionless milestone finalization after two days without Shipper action", async function () {
+  it("lets only the Carrier request arbitration after two days without Shipper action", async function () {
     const { escrow, shipper, carrier, outsider } = await deployFixture();
-    const { payouts } = await createAgreement(escrow, shipper, carrier);
+    const { totalWei } = await createAgreement(escrow, shipper, carrier);
     const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("timed out review"));
     await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
     const submittedAt = (await escrow.getMilestones(0))[0].submittedAt;
     const availableAt = submittedAt + (2n * 24n * 60n * 60n);
 
-    await expect(escrow.connect(outsider).finalizeMilestoneAfterReviewTimeout(0, 0))
+    await expect(escrow.connect(outsider).requestArbitrationAfterReviewTimeout(0, 0))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+
+    await expect(escrow.connect(carrier).requestArbitrationAfterReviewTimeout(0, 0))
       .to.be.revertedWithCustomError(escrow, "ReviewPeriodActive")
       .withArgs(availableAt);
 
     await time.increaseTo(availableAt);
-    await expect(escrow.connect(outsider).finalizeMilestoneAfterReviewTimeout(0, 0))
-      .to.emit(escrow, "MilestoneConfirmed")
-      .withArgs(0, 0, evidenceHash, outsider.address, payouts[0]);
+    await expect(escrow.connect(carrier).requestArbitrationAfterReviewTimeout(0, 0))
+      .to.emit(escrow, "ArbitrationRequested")
+      .withArgs(0, 0, carrier.address)
+      .and.to.emit(escrow, "DisputeOpened")
+      .withArgs(0, carrier.address, "Shipper did not review submitted evidence within 2 days.");
 
     const agreement = await escrow.getAgreement(0);
-    expect(agreement.nextMilestone).to.equal(1);
-    expect(agreement.remainingAmount).to.equal(payouts[1]);
+    expect(agreement.status).to.equal(3);
+    expect(agreement.nextMilestone).to.equal(0);
+    expect(agreement.remainingAmount).to.equal(totalWei);
   });
 
   it("lets only the fixed Shipper confirm matching evidence and releases pickup 30%", async function () {

@@ -92,7 +92,7 @@ contract LogisticsEscrow {
     error ReviewPeriodActive(uint64 availableAt);
 
     address public immutable arbitrator;
-    uint256 public constant CONTRACT_VERSION = 4;
+    uint256 public constant CONTRACT_VERSION = 5;
     string public constant EVIDENCE_URI_SCHEME = "supabase://";
     uint256 public constant MAX_MILESTONES = 2;
     uint256 public constant REPUTATION_POINTS_PER_MILESTONE = 10;
@@ -159,6 +159,11 @@ contract LogisticsEscrow {
     event AgreementCompleted(uint256 indexed agreementId);
     event Refunded(uint256 indexed agreementId, address indexed shipper, uint256 amount);
     event DisputeOpened(uint256 indexed agreementId, address indexed openedBy, string reason);
+    event ArbitrationRequested(
+        uint256 indexed agreementId,
+        uint256 indexed milestoneIndex,
+        address indexed carrier
+    );
     event DisputeResolved(
         uint256 indexed agreementId,
         uint256 shipperAmount,
@@ -382,11 +387,16 @@ contract LogisticsEscrow {
         _sendValue(agreement.shipper, refund);
     }
 
-    /// @notice Anyone may release a submitted milestone after the Shipper's review window expires.
-    function finalizeMilestoneAfterReviewTimeout(
+    /// @notice The Carrier may escalate submitted evidence after the Shipper's review window expires.
+    /// @dev No funds move here. The fixed Arbitrator must resolve the remaining escrow.
+    function requestArbitrationAfterReviewTimeout(
         uint256 agreementId,
         uint256 milestoneIndex
-    ) external agreementExists(agreementId) nonReentrant {
+    ) external agreementExists(agreementId) {
+        Agreement storage agreement = agreements[agreementId];
+        if (agreement.carrier != msg.sender) revert Unauthorized();
+        if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
+        if (milestoneIndex != agreement.nextMilestone) revert InvalidMilestone();
         if (milestoneIndex >= milestones[agreementId].length) revert InvalidMilestone();
         Milestone storage milestone = milestones[agreementId][milestoneIndex];
         if (milestone.state != MilestoneState.Submitted || milestone.submittedAt == 0) {
@@ -394,7 +404,10 @@ contract LogisticsEscrow {
         }
         uint64 availableAt = milestone.submittedAt + uint64(EVIDENCE_REVIEW_PERIOD);
         if (block.timestamp < availableAt) revert ReviewPeriodActive(availableAt);
-        _confirmMilestone(agreementId, milestoneIndex, milestone.proofHash, false);
+        agreement.status = AgreementStatus.Disputed;
+        string memory reason = "Shipper did not review submitted evidence within 2 days.";
+        emit ArbitrationRequested(agreementId, milestoneIndex, msg.sender);
+        emit DisputeOpened(agreementId, msg.sender, reason);
     }
 
     function _confirmMilestone(
@@ -497,6 +510,10 @@ contract LogisticsEscrow {
         _requireMaximumLength(reason, MAX_DISPUTE_REASON_LENGTH);
 
         Milestone storage current = milestones[agreementId][agreement.nextMilestone];
+        if (msg.sender == agreement.carrier && current.state == MilestoneState.Submitted) {
+            uint64 availableAt = current.submittedAt + uint64(EVIDENCE_REVIEW_PERIOD);
+            if (block.timestamp < availableAt) revert ReviewPeriodActive(availableAt);
+        }
         if (current.state == MilestoneState.Pending && block.timestamp > current.dueAt) {
             revert DeadlineRefundAvailable();
         }

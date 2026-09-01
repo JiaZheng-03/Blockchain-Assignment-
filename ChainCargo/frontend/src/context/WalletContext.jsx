@@ -7,9 +7,27 @@ import {
   useRef,
   useState,
 } from 'react';
+import { verifyMessage } from 'ethers';
 
 const WalletContext = createContext(null);
 const SELECTED_ACCOUNT_KEY = 'chaincargo.selectedAccount';
+const WALLET_SESSION_KEY = 'chaincargo.walletSession';
+
+function readWalletSession() {
+  if (typeof window === 'undefined') return null;
+  try {
+    return JSON.parse(window.sessionStorage.getItem(WALLET_SESSION_KEY));
+  } catch {
+    window.sessionStorage.removeItem(WALLET_SESSION_KEY);
+    return null;
+  }
+}
+
+function rememberWalletSession(session) {
+  if (typeof window === 'undefined') return;
+  if (session) window.sessionStorage.setItem(WALLET_SESSION_KEY, JSON.stringify(session));
+  else window.sessionStorage.removeItem(WALLET_SESSION_KEY);
+}
 
 function rememberSelectedAccount(address) {
   if (typeof window === 'undefined') return;
@@ -52,6 +70,8 @@ export function WalletProvider({ children }) {
   const [chainId, setChainId] = useState(null);
   const [authorizedAccounts, setAuthorizedAccounts] = useState([]);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [walletSession, setWalletSession] = useState(readWalletSession);
   const [error, setError] = useState('');
   const [showAccountPermissionHelp, setShowAccountPermissionHelp] = useState(false);
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
@@ -80,9 +100,8 @@ export function WalletProvider({ children }) {
       setAuthorizedAccounts(accounts || []);
       if (accounts && accounts[0]) {
         connectionConfirmedRef.current = true;
-        const selected = chooseRememberedAccount(accounts);
-        rememberSelectedAccount(selected);
-        setAccount(selected);
+        rememberSelectedAccount(accounts[0]);
+        setAccount(accounts[0]);
       } else {
         connectionConfirmedRef.current = false;
         rememberSelectedAccount(null);
@@ -98,6 +117,77 @@ export function WalletProvider({ children }) {
       setIsConnecting(false);
     }
   }, []);
+
+  const chooseAccountInMetaMask = useCallback(async () => {
+    if (typeof window === 'undefined' || !window.ethereum) {
+      setError('MetaMask is not installed. Please install MetaMask and refresh the page.');
+      return;
+    }
+
+    try {
+      setIsConnecting(true);
+      setError('');
+      await window.ethereum.request({
+        method: 'wallet_requestPermissions',
+        params: [{ eth_accounts: {} }],
+      });
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      setAuthorizedAccounts(accounts || []);
+      if (!accounts?.[0]) return;
+      connectionConfirmedRef.current = true;
+      rememberSelectedAccount(accounts[0]);
+      setAccount(accounts[0]);
+    } catch (selectionError) {
+      console.error(selectionError);
+      if (selectionError?.code !== 4001) {
+        setError(selectionError.message || 'Failed to select a MetaMask account.');
+      }
+    } finally {
+      setIsConnecting(false);
+    }
+  }, []);
+
+  const authenticateWallet = useCallback(async () => {
+    if (!account || !chainId || typeof window === 'undefined' || !window.ethereum) {
+      setError('Connect MetaMask before logging in.');
+      return false;
+    }
+
+    try {
+      setIsAuthenticating(true);
+      setError('');
+      const issuedAt = new Date().toISOString();
+      const message = [
+        'Sign in to ChainCargo',
+        '',
+        `Wallet: ${account}`,
+        `Chain ID: ${chainId}`,
+        `Issued at: ${issuedAt}`,
+        '',
+        'This request will not trigger a blockchain transaction or gas fee.',
+      ].join('\n');
+      const signature = await window.ethereum.request({
+        method: 'personal_sign',
+        params: [message, account],
+      });
+      const recoveredAddress = verifyMessage(message, signature);
+      if (recoveredAddress.toLowerCase() !== account.toLowerCase()) {
+        throw new Error('The signature does not match the connected wallet.');
+      }
+      const session = { address: account, chainId, issuedAt };
+      rememberWalletSession(session);
+      setWalletSession(session);
+      return true;
+    } catch (authenticationError) {
+      console.error(authenticationError);
+      if (authenticationError?.code !== 4001) {
+        setError(authenticationError.message || 'Wallet login failed.');
+      }
+      return false;
+    } finally {
+      setIsAuthenticating(false);
+    }
+  }, [account, chainId]);
 
   const switchWallet = useCallback(async () => {
     if (typeof window === 'undefined' || !window.ethereum) {
@@ -198,6 +288,8 @@ export function WalletProvider({ children }) {
       rememberSelectedAccount(null);
       setAuthorizedAccounts([]);
       setAccount(null);
+      rememberWalletSession(null);
+      setWalletSession(null);
       setShowAccountSwitcher(false);
     } catch (disconnectError) {
       console.error(disconnectError);
@@ -212,6 +304,18 @@ export function WalletProvider({ children }) {
       setIsConnecting(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!walletSession) return;
+    const matchesCurrentWallet = account
+      && chainId
+      && walletSession.address?.toLowerCase() === account.toLowerCase()
+      && walletSession.chainId === chainId;
+    if (!matchesCurrentWallet) {
+      rememberWalletSession(null);
+      setWalletSession(null);
+    }
+  }, [account, chainId, walletSession]);
 
   const selectAuthorizedAccount = useCallback((selectedAccount) => {
     if (!connectionConfirmedRef.current) {
@@ -288,12 +392,15 @@ export function WalletProvider({ children }) {
   const value = useMemo(
     () => ({
       account,
+      authenticateWallet,
       accountPermissionMode,
       authorizedAccounts,
       authorizedAccountCount: authorizedAccounts.length,
       authorizeAdditionalAccount,
       chainId,
+      chooseAccountInMetaMask,
       isConnecting,
+      isAuthenticating,
       error,
       formatAddress,
       connectWallet,
@@ -304,6 +411,12 @@ export function WalletProvider({ children }) {
       switchWallet,
       networkName: getNetworkName(chainId),
       isConnected: Boolean(account),
+      isAuthenticated: Boolean(
+        account
+        && chainId
+        && walletSession?.address?.toLowerCase() === account.toLowerCase()
+        && walletSession?.chainId === chainId
+      ),
       selectAuthorizedAccount,
       showAccountPermissionHelp,
       showAccountSwitcher,
@@ -311,20 +424,24 @@ export function WalletProvider({ children }) {
     [
       account,
       accountPermissionMode,
+      authenticateWallet,
       authorizeAdditionalAccount,
       authorizedAccounts,
       chainId,
+      chooseAccountInMetaMask,
       closeAccountPermissionHelp,
       closeAccountSwitcher,
       connectWallet,
       disconnectWallet,
       error,
       isConnecting,
+      isAuthenticating,
       manageAuthorizedAccounts,
       selectAuthorizedAccount,
       showAccountPermissionHelp,
       showAccountSwitcher,
       switchWallet,
+      walletSession,
     ],
   );
 

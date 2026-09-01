@@ -57,7 +57,7 @@ export const ESCROW_ABI = [
   'function confirmMilestone(uint256 agreementId,uint256 milestoneIndex,bytes32 expectedEvidenceHash)',
   'function approveMilestone(uint256 agreementId,uint256 milestoneIndex)',
   'function rejectEvidence(uint256 agreementId,uint256 milestoneIndex)',
-  'function finalizeMilestoneAfterReviewTimeout(uint256 agreementId,uint256 milestoneIndex)',
+  'function requestArbitrationAfterReviewTimeout(uint256 agreementId,uint256 milestoneIndex)',
   'function claimRefundAfterDeadline(uint256 agreementId)',
   'function openDispute(uint256 agreementId,string reason)',
   'function resolveDispute(uint256 agreementId,uint256 shipperAmount)',
@@ -75,6 +75,7 @@ export const ESCROW_ABI = [
   'event AgreementCompleted(uint256 indexed agreementId)',
   'event Refunded(uint256 indexed agreementId,address indexed shipper,uint256 amount)',
   'event DisputeOpened(uint256 indexed agreementId,address indexed openedBy,string reason)',
+  'event ArbitrationRequested(uint256 indexed agreementId,uint256 indexed milestoneIndex,address indexed carrier)',
   'event DisputeResolved(uint256 indexed agreementId,uint256 shipperAmount,uint256 carrierAmount)',
 ];
 

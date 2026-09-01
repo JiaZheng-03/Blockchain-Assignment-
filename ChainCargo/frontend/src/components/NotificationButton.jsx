@@ -82,7 +82,7 @@ function NotificationButton() {
           : `Agreement #${agreement.id} deadline approaching`;
       const body = kind === 'review'
         ? overdue
-          ? `${agreement.title}: the submitted milestone can now be finalized and paid to the Carrier.`
+          ? `${agreement.title}: the Carrier can now submit the evidence to the Arbitrator.`
           : `${agreement.title}: ${state.countdown} in the Shipper review period.`
         : overdue
           ? `${agreement.title}: remaining escrow is ready for an on-chain refund to the Shipper.`
@@ -158,7 +158,7 @@ function NotificationButton() {
                   <span>
                     {kind === 'review'
                       ? state.level === 'overdue'
-                        ? 'Review period ended. The milestone is ready to finalize.'
+                        ? 'Review period ended. The Carrier can request Arbitrator action.'
                         : `${state.countdown} in the Shipper evidence review period.`
                       : state.level === 'overdue'
                         ? 'Deadline missed. Refund is ready to settle on-chain.'

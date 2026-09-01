@@ -5,6 +5,7 @@ import Footer from './components/Footer';
 import WalletGate from './components/WalletGate';
 import Home from './pages/Home';
 import Register from './pages/Register';
+import WalletAccess from './pages/WalletAccess';
 import Setup from './pages/Setup';
 import Dashboard from './pages/Dashboard';
 import CreateAgreement from './pages/CreateAgreement';
@@ -26,7 +27,6 @@ function AppLayout() {
         </main>
       </div>
       <Footer />
-      <AccountPermissionDialog />
     </div>
   );
 }
@@ -35,6 +35,7 @@ function App() {
   return (
     <BrowserRouter>
       <NoticeToasts />
+      <AccountPermissionDialog />
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Home />} />
@@ -47,7 +48,7 @@ function App() {
             <Route path="/profile" element={<Profile />} />
           </Route>
         </Route>
-        <Route path="/login" element={<Navigate replace to="/setup" />} />
+        <Route path="/login" element={<WalletAccess />} />
         <Route path="/register" element={<Register />} />
         <Route path="*" element={<Navigate replace to="/" />} />
       </Routes>

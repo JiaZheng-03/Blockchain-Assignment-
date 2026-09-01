@@ -14,10 +14,12 @@ function Register() {
       : '1';
   const {
     account,
+    authenticateWallet,
     authorizedAccountCount,
     isConnected,
     isConnecting,
-    connectWallet,
+    isAuthenticated,
+    isAuthenticating,
     switchWallet,
   } = useWallet();
   const {
@@ -51,6 +53,10 @@ function Register() {
     event.preventDefault();
     if (!isConnected) {
       setError('Connect MetaMask and confirm the wallet address before registering.');
+      return;
+    }
+    if (!isAuthenticated) {
+      setError('Login with your connected wallet before registering.');
       return;
     }
     if (!isCorrectNetwork) {
@@ -99,13 +105,14 @@ function Register() {
         {!isConnected && (
           <div className="notice">
             <p>Connect MetaMask first, then verify the exact wallet address shown above.</p>
-            <button
-              className="btn btn-primary"
-              disabled={isConnecting}
-              onClick={connectWallet}
-              type="button"
-            >
-              {isConnecting ? 'Waiting for MetaMask…' : 'Connect MetaMask'}
+            <Link className="btn btn-primary" to="/login">Open wallet access</Link>
+          </div>
+        )}
+        {isConnected && !isAuthenticated && (
+          <div className="notice">
+            <p>Sign a free MetaMask message to verify that you control this wallet before registering.</p>
+            <button className="btn btn-primary" disabled={isAuthenticating} onClick={authenticateWallet} type="button">
+              {isAuthenticating ? 'Waiting for signature…' : 'Login with Wallet'}
             </button>
           </div>
         )}
@@ -172,6 +179,7 @@ function Register() {
               disabled={
                 busy ||
                 !isConnected ||
+                !isAuthenticated ||
                 !isConfigured ||
                 !isCorrectNetwork ||
                 deploymentStatus !== 'ready' ||
@@ -181,6 +189,8 @@ function Register() {
             >
               {!isConnected
                 ? 'Connect MetaMask first'
+                : !isAuthenticated
+                  ? 'Login with Wallet first'
                 : busy
                   ? 'Registering on-chain…'
                   : `Register as ${role === '1' ? 'Shipper' : role === '2' ? 'Carrier' : 'Arbitrator'}`}

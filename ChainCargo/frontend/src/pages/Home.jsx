@@ -8,7 +8,7 @@ function Home() {
   const { deploymentStatus, isCorrectNetwork } = useContract();
   const { hasAppAccess, isArbitrator, isShipper } = useProfile();
   const primaryAction = !isConnected
-    ? { to: '/setup', label: 'Connect MetaMask' }
+    ? { to: '/login', label: 'Connect MetaMask' }
     : !isCorrectNetwork || deploymentStatus !== 'ready'
       ? { to: '/setup', label: 'Finish Local Setup' }
     : !hasAppAccess
