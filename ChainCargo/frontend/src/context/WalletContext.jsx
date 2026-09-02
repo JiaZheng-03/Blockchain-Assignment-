@@ -66,6 +66,7 @@ const getNetworkName = (chainId) => {
 
 export function WalletProvider({ children }) {
   const connectionConfirmedRef = useRef(false);
+  const accountsChangedTimerRef = useRef(null);
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
   const [authorizedAccounts, setAuthorizedAccounts] = useState([]);
@@ -341,14 +342,15 @@ export function WalletProvider({ children }) {
       return undefined;
     }
 
-    const handleAccountsChanged = (accounts) => {
+    const applyAccountsChanged = (accounts) => {
       setError('');
-      setAuthorizedAccounts(accounts);
       if (!connectionConfirmedRef.current || accounts.length === 0) {
         if (accounts.length === 0) connectionConfirmedRef.current = false;
+        setAuthorizedAccounts([]);
         rememberSelectedAccount(null);
         setAccount(null);
       } else {
+        setAuthorizedAccounts(accounts);
         setAccount((current) => {
           const selected = accounts.find(
             (candidate) => candidate.toLowerCase() === current?.toLowerCase(),
@@ -357,6 +359,18 @@ export function WalletProvider({ children }) {
           return selected;
         });
       }
+    };
+
+    const handleAccountsChanged = () => {
+      window.clearTimeout(accountsChangedTimerRef.current);
+      accountsChangedTimerRef.current = window.setTimeout(async () => {
+        try {
+          const confirmedAccounts = await window.ethereum.request({ method: 'eth_accounts' });
+          applyAccountsChanged(confirmedAccounts || []);
+        } catch (accountsError) {
+          console.error(accountsError);
+        }
+      }, 500);
     };
 
     const handleChainChanged = (newChainId) => {
@@ -368,10 +382,9 @@ export function WalletProvider({ children }) {
 
     const initializeWallet = async () => {
       try {
-        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-        setAuthorizedAccounts(accounts || []);
-        // Keep the account disconnected until the user explicitly presses Connect MetaMask.
-        // eth_accounts only tells us which permissions existed in an earlier browser session.
+        // Previous site permissions do not count as a new ChainCargo login session.
+        // Do not expose stale account cards until Connect MetaMask succeeds.
+        setAuthorizedAccounts([]);
         connectionConfirmedRef.current = false;
         setAccount(null);
         const networkId = await window.ethereum.request({ method: 'eth_chainId' });
@@ -384,6 +397,7 @@ export function WalletProvider({ children }) {
     initializeWallet();
 
     return () => {
+      window.clearTimeout(accountsChangedTimerRef.current);
       window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
       window.ethereum.removeListener('chainChanged', handleChainChanged);
     };

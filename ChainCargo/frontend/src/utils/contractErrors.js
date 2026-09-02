@@ -26,6 +26,9 @@ const errorMessages = {
   EvidenceMissing: 'The Carrier must submit evidence before this milestone can be confirmed.',
   EvidenceHashMismatch: 'The supplied evidence hash does not match the Carrier submission.',
   PaymentAlreadyReleased: 'This milestone has already been confirmed and paid.',
+  ExtensionRequestClosed: 'The original milestone deadline has passed. The Shipper may now refund the remaining escrow.',
+  ExtensionAlreadyRequested: 'This milestone has already used its one extension request.',
+  NoPendingExtension: 'There is no pending deadline extension request for this milestone.',
 };
 
 function findRevertData(error) {
@@ -63,6 +66,12 @@ function describeCustomError(parsed) {
       return 'Milestone payouts must exactly equal the deposited escrow amount.';
     case 'ReviewPeriodActive':
       return `The evidence review period ends at ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
+    case 'ExtensionRequestTooEarly':
+      return `The Carrier can request a 24-hour extension starting at ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
+    case 'DisputeNotAvailableBeforeFinalDeadline':
+      return `Only the Shipper can open a dispute after ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
+    case 'InvalidExtensionDeadline':
+      return 'A 24-hour extension would reach or pass the next milestone or Final Delivery deadline.';
     case 'InputTooLong':
       return `A text value is too long. The contract allows at most ${parsed.args.maximumLength} bytes.`;
     default:

@@ -1,7 +1,5 @@
 import { BrowserRouter, Navigate, Routes, Route, Outlet } from 'react-router-dom';
 import Navbar from './components/Navbar';
-import Sidebar from './components/Sidebar';
-import Footer from './components/Footer';
 import WalletGate from './components/WalletGate';
 import Home from './pages/Home';
 import Register from './pages/Register';
@@ -21,12 +19,10 @@ function AppLayout() {
     <div className="app-shell">
       <Navbar />
       <div className="app-content">
-        <Sidebar />
         <main className="main-content">
           <Outlet />
         </main>
       </div>
-      <Footer />
     </div>
   );
 }

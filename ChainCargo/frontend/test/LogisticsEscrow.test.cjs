@@ -27,8 +27,8 @@ describe("LogisticsEscrow", function () {
     const totalWei = ethers.parseEther(total);
     const pickupPayout = (totalWei * BigInt(pickupPercent)) / 100n;
     const payouts = [pickupPayout, totalWei - pickupPayout];
-    const dueDates = [now + 7_200, now + 10_800];
-    const deadline = now + 14_400;
+    const dueDates = [now + (2 * 86_400), now + (4 * 86_400)];
+    const deadline = now + (6 * 86_400);
     const tx = await escrow.connect(shipper).createAgreement(
       title,
       carrier.address,
@@ -284,15 +284,17 @@ describe("LogisticsEscrow", function () {
     expect(await escrow.carrierReputation(carrier.address)).to.equal(10);
   });
 
-  it("prevents Final delivery confirmation before Cargo pickup", async function () {
+  it("allows later evidence early but keeps milestone confirmation sequential", async function () {
     const { escrow, shipper, carrier } = await deployFixture();
     await createAgreement(escrow, shipper, carrier);
     const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("delivery evidence"));
 
     await expect(escrow.connect(carrier).submitEvidence(0, 1, evidenceHash))
-      .to.be.revertedWithCustomError(escrow, "InvalidMilestone");
+      .to.emit(escrow, "MilestoneProofSubmitted")
+      .withArgs(0, 1, evidenceHash, "");
     await expect(escrow.connect(shipper).confirmMilestone(0, 1, evidenceHash))
       .to.be.revertedWithCustomError(escrow, "InvalidMilestone");
+    expect((await escrow.getMilestones(0))[1].state).to.equal(1);
   });
 
   it("releases the remaining 70% for Final delivery and completes the agreement", async function () {
@@ -333,34 +335,106 @@ describe("LogisticsEscrow", function () {
     expect(escrow.interface.getFunction("changeConfirmer")).to.equal(null);
   });
 
-  it("allows anyone to settle a missed deadline but always refunds the Shipper", async function () {
+  it("allows one fixed 24-hour extension request only during the final 24 hours", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    const { dueDates } = await createAgreement(escrow, shipper, carrier);
+    const requestOpensAt = BigInt(dueDates[0] - 86_400);
+    const proposedDueAt = BigInt(dueDates[0] + 86_400);
+
+    await expect(escrow.connect(carrier).requestDeadlineExtension(0, 0, "Port congestion"))
+      .to.be.revertedWithCustomError(escrow, "ExtensionRequestTooEarly")
+      .withArgs(requestOpensAt);
+    await time.increaseTo(requestOpensAt);
+    await expect(escrow.connect(outsider).requestDeadlineExtension(0, 0, "Not my shipment"))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(carrier).requestDeadlineExtension(0, 0, "Port congestion"))
+      .to.emit(escrow, "DeadlineExtensionRequested")
+      .withArgs(0, 0, carrier.address, proposedDueAt, "Port congestion");
+
+    const request = await escrow.getExtensionRequest(0, 0);
+    expect(request.proposedDueAt).to.equal(proposedDueAt);
+    expect(request.pending).to.equal(true);
+    await expect(escrow.connect(carrier).requestDeadlineExtension(0, 0, "Again"))
+      .to.be.revertedWithCustomError(escrow, "ExtensionAlreadyRequested");
+  });
+
+  it("charges 5% of the milestone payout when the Shipper approves an extension", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    const { deadline, dueDates, payouts } = await createAgreement(escrow, shipper, carrier);
+    await time.increaseTo(dueDates[0] - 86_400);
+    await escrow.connect(carrier).requestDeadlineExtension(0, 0, "Customs delay");
+    const compensation = payouts[0] * 5n / 100n;
+
+    await expect(escrow.connect(outsider).approveDeadlineExtension(0, 0))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(shipper).approveDeadlineExtension(0, 0))
+      .to.emit(escrow, "DeadlineExtensionApproved")
+      .withArgs(0, 0, dueDates[0] + 86_400, compensation);
+
+    const pickup = (await escrow.getMilestones(0))[0];
+    expect(pickup.dueAt).to.equal(dueDates[0] + 86_400);
+    expect(pickup.extensionCompensation).to.equal(compensation);
+    expect(pickup.extensionApproved).to.equal(true);
+    expect((await escrow.getAgreement(0)).deadline).to.equal(deadline);
+
+    await time.increaseTo(dueDates[0] + 1);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("extended pickup evidence"));
+    await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
+    await expect(escrow.connect(shipper).confirmMilestone(0, 0, evidenceHash))
+      .to.changeEtherBalances(
+        [escrow, shipper, carrier],
+        [-payouts[0], compensation, payouts[0] - compensation],
+      );
+  });
+
+  it("lets the Shipper reject an extension and refund after the original deadline", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    const { dueDates, totalWei } = await createAgreement(escrow, shipper, carrier);
+    await time.increaseTo(dueDates[0] - 86_400);
+    await escrow.connect(carrier).requestDeadlineExtension(0, 0, "Traffic delay");
+    await expect(escrow.connect(shipper).rejectDeadlineExtension(0, 0))
+      .to.emit(escrow, "DeadlineExtensionRejected")
+      .withArgs(0, 0);
+
+    await time.increaseTo(dueDates[0] + 1);
+    await expect(escrow.connect(shipper).claimRefundAfterDeadline(0))
+      .to.changeEtherBalances([escrow, shipper], [-totalWei, totalWei]);
+  });
+
+  it("does not let an unapproved extension request block the Shipper refund", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    const { dueDates, totalWei } = await createAgreement(escrow, shipper, carrier);
+    await time.increaseTo(dueDates[0] - 86_400);
+    await escrow.connect(carrier).requestDeadlineExtension(0, 0, "Awaiting port slot");
+
+    await time.increaseTo(dueDates[0] + 1);
+    expect((await escrow.getExtensionRequest(0, 0)).pending).to.equal(true);
+    await expect(escrow.connect(shipper).claimRefundAfterDeadline(0))
+      .to.changeEtherBalances([escrow, shipper], [-totalWei, totalWei]);
+  });
+
+  it("allows only the Shipper to refund a missed deadline", async function () {
     const { escrow, shipper, carrier, outsider } = await deployFixture();
     const { dueDates, totalWei } = await createAgreement(escrow, shipper, carrier);
     await time.increaseTo(dueDates[0] + 1);
 
     expect(await escrow.canRefund(0)).to.equal(true);
-    const contractBalanceBefore = await ethers.provider.getBalance(await escrow.getAddress());
-    const shipperBalanceBefore = await ethers.provider.getBalance(shipper.address);
-    const refund = await escrow.connect(outsider).claimRefundAfterDeadline(0);
-    await expect(refund).to.emit(escrow, "Refunded")
-      .withArgs(0, shipper.address, totalWei);
-    await refund.wait();
-    expect(await ethers.provider.getBalance(await escrow.getAddress()))
-      .to.equal(contractBalanceBefore - totalWei);
-    expect(await ethers.provider.getBalance(shipper.address))
-      .to.equal(shipperBalanceBefore + totalWei);
+    await expect(escrow.connect(outsider).claimRefundAfterDeadline(0))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(shipper).claimRefundAfterDeadline(0))
+      .to.changeEtherBalances([escrow, shipper], [-totalWei, totalWei]);
     expect((await escrow.getAgreement(0)).status).to.equal(2);
   });
 
   it("refunds only the remaining 70% when Final delivery evidence misses its deadline", async function () {
-    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    const { escrow, shipper, carrier } = await deployFixture();
     const { dueDates, payouts } = await createAgreement(escrow, shipper, carrier);
     const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("pickup evidence"));
     await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
     await escrow.connect(shipper).confirmMilestone(0, 0, evidenceHash);
     await time.increaseTo(dueDates[1] + 1);
 
-    await expect(escrow.connect(outsider).claimRefundAfterDeadline(0))
+    await expect(escrow.connect(shipper).claimRefundAfterDeadline(0))
       .to.changeEtherBalances([escrow, shipper], [-payouts[1], payouts[1]]);
   });
 
@@ -373,15 +447,26 @@ describe("LogisticsEscrow", function () {
 
     expect(await escrow.canRefund(0)).to.equal(false);
     await expect(escrow.connect(outsider).claimRefundAfterDeadline(0))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(shipper).claimRefundAfterDeadline(0))
       .to.be.revertedWithCustomError(escrow, "DeadlineNotPassed");
     await expect(escrow.connect(shipper).confirmMilestone(0, 0, evidenceHash))
       .to.emit(escrow, "MilestoneConfirmed");
   });
 
-  it("preserves participant disputes and deployer arbitration", async function () {
+  it("allows only the Shipper to dispute after the Final Delivery Deadline", async function () {
     const { escrow, arbitrator, shipper, carrier, outsider } = await deployFixture();
-    await createAgreement(escrow, shipper, carrier);
-    await escrow.connect(carrier).openDispute(0, "Cargo condition disputed");
+    const { deadline } = await createAgreement(escrow, shipper, carrier);
+
+    await expect(escrow.connect(shipper).openDispute(0, "Delivery disputed"))
+      .to.be.revertedWithCustomError(escrow, "DisputeNotAvailableBeforeFinalDeadline")
+      .withArgs(deadline + 1);
+    await time.increaseTo(deadline + 1);
+    await expect(escrow.connect(carrier).openDispute(0, "Cargo condition disputed"))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(shipper).openDispute(0, "Delivery disputed"))
+      .to.emit(escrow, "DisputeOpened")
+      .withArgs(0, shipper.address, "Delivery disputed");
 
     await expect(escrow.connect(outsider).resolveDispute(0, 1))
       .to.be.revertedWithCustomError(escrow, "Unauthorized");

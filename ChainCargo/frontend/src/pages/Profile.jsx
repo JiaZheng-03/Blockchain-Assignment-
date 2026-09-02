@@ -11,15 +11,9 @@ import { getSepoliaAddressUrl } from '../utils/sepoliaExplorer';
 function Profile() {
   const {
     account,
-    authorizedAccounts,
-    connectWallet,
-    disconnectWallet,
     isConnected,
-    isConnecting,
     formatAddress,
-    manageAuthorizedAccounts,
     networkName,
-    switchWallet,
   } = useWallet();
   const { address } = useContract();
   const { isArbitrator, profile, roleLabel, loading } = useProfile();
@@ -93,36 +87,6 @@ function Profile() {
             ) : <strong>Not deployed</strong>}
           </div>
         </div>
-      </div>
-      <div className="panel full-span wallet-access-panel">
-        <div>
-          <span className="eyebrow">MetaMask permissions</span>
-          <h2>Wallet Access</h2>
-          <p>Choose which authorized Sepolia address to use, manage site access, or disconnect ChainCargo from MetaMask.</p>
-        </div>
-        <div className="authorized-addresses">
-          <small>Linked addresses ({authorizedAccounts.length})</small>
-          {authorizedAccounts.map((address) => (
-            <code className={address.toLowerCase() === account?.toLowerCase() ? 'selected-address' : ''} key={address}>
-              {formatAddress(address)}
-              {address.toLowerCase() === account?.toLowerCase() ? ' · Current' : ''}
-            </code>
-          ))}
-        </div>
-        <div className="wallet-access-actions">
-          <button className="btn btn-primary" type="button" onClick={isConnected ? switchWallet : connectWallet} disabled={isConnecting}>
-            {isConnected ? 'Switch account' : 'Connect wallet'}
-          </button>
-          <button className="btn btn-secondary" type="button" onClick={manageAuthorizedAccounts} disabled={isConnecting || !isConnected}>
-            Manage linked accounts
-          </button>
-          <button className="btn btn-danger" type="button" onClick={disconnectWallet} disabled={isConnecting || !isConnected}>
-            Disconnect ChainCargo
-          </button>
-        </div>
-        <small className="permission-note">
-          Removing website access does not delete on-chain roles, agreements, or transaction history.
-        </small>
       </div>
     </div>
   );

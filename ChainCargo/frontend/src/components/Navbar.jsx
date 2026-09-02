@@ -7,7 +7,7 @@ import { useWalletBalance } from '../hooks/useWalletBalance';
 
 function Navbar() {
   const { account } = useWallet();
-  const { isArbitrator, profile, roleLabel } = useProfile();
+  const { hasAppAccess, isArbitrator, isShipper, profile, roleLabel } = useProfile();
   const { displayBalance } = useWalletBalance();
 
   return (
@@ -16,7 +16,15 @@ function Navbar() {
         ChainCargo
       </Link>
       <nav className="nav-links">
-        <NavLink to="/">Home</NavLink>
+        {hasAppAccess && (
+          <NavLink to="/dashboard">{isArbitrator ? 'Arbitration' : 'Dashboard'}</NavLink>
+        )}
+        {hasAppAccess && isShipper && (
+          <NavLink to="/create-agreement">Create Agreement</NavLink>
+        )}
+        {hasAppAccess && !isArbitrator && (
+          <NavLink to="/history">History</NavLink>
+        )}
         {account && (
           <NavLink className="navbar-profile" to="/profile">
             <span>{isArbitrator ? 'Contract deployer' : profile?.name || 'Profile'}</span>

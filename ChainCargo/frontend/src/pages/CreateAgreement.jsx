@@ -16,6 +16,22 @@ import {
 } from '../utils/carrierReputation';
 import { findAgreementCreatedId } from '../utils/contractReceipts';
 
+const DETAIL_ERROR_TARGETS = new Set(['title', 'carrier', 'totalAmount', 'deadline', 'notes']);
+
+function getErrorTarget(message) {
+  if (!message) return null;
+  const normalized = message.toLowerCase();
+  const milestoneMatch = normalized.match(/milestone\s+(\d+)/);
+  if (milestoneMatch) return `milestone-${Number(milestoneMatch[1]) - 1}`;
+  if (normalized.includes('agreement name') || normalized.includes('same name')) return 'title';
+  if (normalized.includes('carrier') || normalized.includes('participant')) return 'carrier';
+  if (normalized.includes('total amount') || normalized.includes('escrow amount') || normalized.includes('funding')) return 'totalAmount';
+  if (normalized.includes('final deadline') || normalized.includes('delivery deadline')) return 'deadline';
+  if (normalized.includes('agreement notes')) return 'notes';
+  if (normalized.includes('payout') || normalized.includes('percentage')) return 'percentage';
+  return null;
+}
+
 function CreateAgreement() {
   const transactionInFlight = useRef(false);
   const navigate = useNavigate();
@@ -226,7 +242,9 @@ function CreateAgreement() {
       }
       moveToStep(3);
     } catch (validationError) {
-      setError(friendlyContractError(validationError));
+      const message = friendlyContractError(validationError);
+      setError(message);
+      if (DETAIL_ERROR_TARGETS.has(getErrorTarget(message))) setStep(1);
     } finally {
       setBusy(false);
     }
@@ -294,7 +312,11 @@ function CreateAgreement() {
       }
       navigate(`/agreement/${agreementId.toString()}`);
     } catch (submitError) {
-      setError(friendlyContractError(submitError));
+      const message = friendlyContractError(submitError);
+      const target = getErrorTarget(message);
+      setError(message);
+      if (DETAIL_ERROR_TARGETS.has(target)) setStep(1);
+      else if (target?.startsWith('milestone-') || target === 'percentage') setStep(2);
     } finally {
       transactionInFlight.current = false;
       setBusy(false);
@@ -328,6 +350,7 @@ function CreateAgreement() {
   const selectedCarrier = registeredCarriers.find(
     (carrier) => carrier.address.toLowerCase() === form.carrier.toLowerCase(),
   );
+  const errorTarget = getErrorTarget(error);
 
   return (
     <div className="form-card agreement-wizard">
@@ -363,8 +386,9 @@ function CreateAgreement() {
             </div>
             <label>
               Agreement Name
-              <input name="title" value={form.title} onChange={updateForm} required placeholder="Shipment #001" />
+              <input aria-invalid={errorTarget === 'title'} name="title" value={form.title} onChange={updateForm} required placeholder="Shipment #001" />
               <small>Names are unique for this Shipper wallet, ignoring capitalization and repeated spaces.</small>
+              {errorTarget === 'title' && <small className="field-error">{error}</small>}
             </label>
             <label>
               Registered Carrier
@@ -374,6 +398,7 @@ function CreateAgreement() {
                 onChange={updateForm}
                 required
                 value={form.carrier}
+                aria-invalid={errorTarget === 'carrier'}
               >
                 <option value="">
                   {carriersLoading ? 'Loading registered carriers…' : 'Select a Carrier wallet'}
@@ -387,6 +412,7 @@ function CreateAgreement() {
               <small>
                 Only wallets registered on-chain as Carrier are listed. Found {registeredCarriers.length}.
               </small>
+              {errorTarget === 'carrier' && <small className="field-error">{error}</small>}
             </label>
             {selectedCarrier && (
               <div className="carrier-reputation-preview">
@@ -411,15 +437,21 @@ function CreateAgreement() {
             )}
             <label>
               Total Payload / Escrow Value (ETH)
-              <input name="totalAmount" value={form.totalAmount} onChange={updateForm} required min="0.000001" step="any" type="number" placeholder="10" />
+              <input aria-invalid={errorTarget === 'totalAmount'} name="totalAmount" value={form.totalAmount} onChange={updateForm} required min="0.000001" step="any" type="number" placeholder="10" />
               <small>The full payable value is locked in the smart contract and divided across milestones.</small>
+              {errorTarget === 'totalAmount' && <small className="field-error">{error}</small>}
             </label>
             <label>
               Final Delivery Deadline
-              <input name="deadline" value={form.deadline} onChange={updateForm} required min={minimumDateTime} type="datetime-local" />
+              <input aria-invalid={errorTarget === 'deadline'} name="deadline" value={form.deadline} onChange={updateForm} required min={minimumDateTime} type="datetime-local" />
               <small>Must be at least 1 hour from now.</small>
+              {errorTarget === 'deadline' && <small className="field-error">{error}</small>}
             </label>
-            <label>Agreement Notes<textarea name="notes" value={form.notes} onChange={updateForm} rows="4" placeholder="Add shipment instructions" /></label>
+            <label>
+              Agreement Notes
+              <textarea aria-invalid={errorTarget === 'notes'} name="notes" value={form.notes} onChange={updateForm} rows="4" placeholder="Add shipment instructions" />
+              {errorTarget === 'notes' && <small className="field-error">{error}</small>}
+            </label>
             <div className="wizard-actions">
               <button className="btn btn-primary" disabled={busy} type="button" onClick={continueToMilestones}>
                 {busy ? 'Checking name…' : 'Continue to Milestones'}
@@ -450,6 +482,7 @@ function CreateAgreement() {
                 <label>
                   Escrow percentage
                   <input
+                    aria-invalid={errorTarget === 'percentage'}
                     max="99"
                     min="1"
                     onChange={(event) => updatePercentage(index, event.target.value)}
@@ -458,11 +491,13 @@ function CreateAgreement() {
                     value={milestone.percentage}
                   />
                   <small>Changing this value automatically sets milestone {index === 0 ? 2 : 1} to {100 - Number(milestone.percentage || 0)}%.</small>
+                  {errorTarget === 'percentage' && index === 0 && <small className="field-error">{error}</small>}
                 </label>
                 <div>
                   <label>
                     Due date
                     <input
+                      aria-invalid={errorTarget === `milestone-${index}`}
                       required
                       min={getMilestoneMinimum(index)}
                       max={form.deadline || undefined}
@@ -476,6 +511,7 @@ function CreateAgreement() {
                         ? 'Must be in the future and no later than the final deadline.'
                         : `Must be later than milestone ${index} and no later than the final deadline.`}
                     </small>
+                    {errorTarget === `milestone-${index}` && <small className="field-error">{error}</small>}
                   </label>
                 </div>
               </div>
@@ -532,7 +568,7 @@ function CreateAgreement() {
             </div>
           </section>
         )}
-        {error && <div className="notice error">{error}</div>}
+        {error && !errorTarget && <div className="notice error">{error}</div>}
       </form>
     </div>
   );

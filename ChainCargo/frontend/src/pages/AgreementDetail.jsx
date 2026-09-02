@@ -45,6 +45,8 @@ function AgreementDetail() {
   const [verification, setVerification] = useState(null);
   const [disputeReason, setDisputeReason] = useState('');
   const [resolutionEth, setResolutionEth] = useState('');
+  const [extensionReason, setExtensionReason] = useState('');
+  const [extensionRequest, setExtensionRequest] = useState(null);
   const [arbitrator, setArbitrator] = useState('');
   const [disputeInfo, setDisputeInfo] = useState(null);
   const [disputeLookupError, setDisputeLookupError] = useState('');
@@ -84,11 +86,32 @@ function AgreementDetail() {
           approvedAt: Number(milestone.approvedAt),
           state: Number(milestone.state),
           paid: Boolean(milestone.paid),
+          extensionRequestedAt: Number(milestone.extensionRequestedAt),
+          extensionProposedDueAt: Number(milestone.extensionProposedDueAt),
+          extensionCompensation: milestone.extensionCompensation,
+          extensionRequested: Boolean(milestone.extensionRequested),
+          extensionPending: Boolean(milestone.extensionPending),
+          extensionApproved: Boolean(milestone.extensionApproved),
           statusLabel: Number(milestone.state) === 2 && milestone.paid
             ? 'Confirmed & paid'
             : MILESTONE_STATUS[Number(milestone.state)],
         })),
       );
+      const nextMilestoneIndex = Number(rawAgreement.nextMilestone);
+      if (nextMilestoneIndex < rawMilestones.length) {
+        const request = await contract.getExtensionRequest(id, nextMilestoneIndex);
+        setExtensionRequest({
+          approved: Boolean(request.approved),
+          compensation: request.compensation,
+          pending: Boolean(request.pending),
+          proposedDueAt: Number(request.proposedDueAt),
+          reason: request.reason,
+          requested: Boolean(request.requested),
+          requestedAt: Number(request.requestedAt),
+        });
+      } else {
+        setExtensionRequest(null);
+      }
       setCanRefund(refundable);
       setArbitrator(arbitratorAddress);
       setDisputeInfo(null);
@@ -174,8 +197,17 @@ function AgreementDetail() {
       .then((response) => response.ok ? response.json() : null)
       .then((config) => {
         if (!cancelled) {
-          setStorageConfigured(Boolean(config?.configured));
-          setStorageConfigurationMessage(config?.message || 'The evidence storage API is unavailable.');
+          const apiUsesCurrentContract = Boolean(
+            address &&
+            config?.contractAddress &&
+            config.contractAddress.toLowerCase() === address.toLowerCase()
+          );
+          setStorageConfigured(Boolean(config?.configured && apiUsesCurrentContract));
+          setStorageConfigurationMessage(
+            !apiUsesCurrentContract
+              ? 'The API is using a different contract deployment. Restart npm run dev after deploying.'
+              : config?.message || 'The evidence storage API is unavailable.',
+          );
         }
       })
       .catch(() => {
@@ -188,7 +220,7 @@ function AgreementDetail() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [address]);
 
   useEffect(() => {
     setVerification(null);
@@ -206,6 +238,7 @@ function AgreementDetail() {
       setVerification(null);
       setDisputeReason('');
       setResolutionEth('');
+      setExtensionReason('');
     } catch (actionError) {
       const message = friendlyContractError(actionError);
       setError(message);
@@ -298,11 +331,18 @@ function AgreementDetail() {
   const isCarrier = normalizedAccount === agreement.carrier.toLowerCase();
   const isArbitrator = normalizedAccount === arbitrator.toLowerCase();
   const currentMilestone = milestones[agreement.nextMilestone];
+  const nextMilestone = milestones[agreement.nextMilestone + 1];
   const currentMilestonePending = agreement.status === 0 && currentMilestone?.state === 0;
   const activeDeadline = currentMilestonePending ? currentMilestone.dueAt : agreement.deadline;
   const deadlineState = getDeadlineState(activeDeadline, nowSeconds, agreement.status === 0);
   const refundAvailable = isRefundButtonAvailable(canRefund);
   const browserShowsMissedDeadline = currentMilestonePending && nowSeconds > currentMilestone.dueAt;
+  const extensionWindowOpen = currentMilestonePending
+    && nowSeconds >= currentMilestone.dueAt - (24 * 60 * 60)
+    && nowSeconds < currentMilestone.dueAt;
+  const extensionBoundary = nextMilestone?.dueAt || agreement.deadline;
+  const proposedExtensionDeadline = currentMilestone?.dueAt + (24 * 60 * 60);
+  const extensionFitsSchedule = proposedExtensionDeadline < extensionBoundary;
   let nextStep = {
     title: 'This agreement is closed',
     detail: `Final status: ${agreement.statusLabel}. Review the immutable milestones and transaction history.`,
@@ -310,7 +350,7 @@ function AgreementDetail() {
   if (agreement.status === 0 && refundAvailable) {
     nextStep = {
       title: 'A deadline refund is available',
-      detail: 'The Carrier missed the current evidence deadline. Any wallet may settle the refund transaction; the contract always returns all remaining escrow to the Shipper.',
+      detail: 'The Carrier missed the current evidence deadline. Only the original Shipper can refund all remaining escrow.',
     };
   } else if (agreement.status === 0 && currentMilestone?.state === 0) {
     nextStep = isCarrier
@@ -396,24 +436,24 @@ function AgreementDetail() {
         </div>
         {error && <div className="notice error">{error}</div>}
 
-        {agreement.status === 0 && (isShipper || isCarrier || refundAvailable) && (
+        {agreement.status === 0 && isShipper && (refundAvailable || nowSeconds > agreement.deadline) && (
           <div className="action-panel">
             <h3>Agreement actions</h3>
-            {refundAvailable && (
+            {refundAvailable && isShipper && (
               <>
                 <div className="notice">
-                  Settlement is permissionless, but Ethereum still requires a transaction to execute it. The recipient is fixed to the Shipper.
+                  The current milestone deadline passed without evidence. Only the original Shipper can refund the remaining escrow.
                 </div>
                 <button
                   className="btn btn-danger"
                   disabled={Boolean(busyAction)}
                   onClick={() => transact('refund', (contract) => contract.claimRefundAfterDeadline(id))}
                 >
-                  {busyAction === 'refund' ? 'Settling refund…' : 'Settle deadline refund to Shipper'}
+                  {busyAction === 'refund' ? 'Refunding…' : 'Refund remaining escrow'}
                 </button>
               </>
             )}
-            {!refundAvailable && !(isCarrier && currentMilestone?.state === 1) && <div className="inline-form">
+            {nowSeconds > agreement.deadline && <div className="inline-form">
               <input
                 value={disputeReason}
                 onChange={(event) => setDisputeReason(event.target.value)}
@@ -487,6 +527,10 @@ function AgreementDetail() {
         <div className="timeline">
           {milestones.map((milestone) => {
             const isCurrent = milestone.index === agreement.nextMilestone && agreement.status === 0;
+            const canSubmitEvidence = agreement.status === 0
+              && milestone.state === 0
+              && nowSeconds <= milestone.dueAt
+              && nowSeconds <= agreement.deadline;
             const milestoneExpired = nowSeconds > milestone.dueAt;
             const agreementExpired = nowSeconds > agreement.deadline;
             const evidenceUrl = getEvidencePublicUrl(milestone.proofURI);
@@ -511,6 +555,49 @@ function AgreementDetail() {
                     <span>{milestone.payoutEth} ETH ({percentage}%)</span>
                     <span>Due {formatDate(milestone.dueAt)}</span>
                   </div>
+                  {milestone.extensionApproved && (
+                    <div className="notice">
+                      24-hour extension approved · 5% compensation: {ethers.formatEther(milestone.extensionCompensation)} ETH to Shipper · Carrier receives {ethers.formatEther(milestone.payout - milestone.extensionCompensation)} ETH after confirmation.
+                    </div>
+                  )}
+                  {isCurrent && currentMilestonePending && extensionRequest?.pending && (
+                    <div className="evidence-form">
+                      <strong>24-hour extension requested</strong>
+                      <div className="detail-grid single">
+                        <div><small>Reason</small><strong>{extensionRequest.reason}</strong></div>
+                        <div><small>Proposed deadline</small><strong>{formatDate(extensionRequest.proposedDueAt)}</strong></div>
+                      </div>
+                      <div className="notice warning">
+                        Approval extends only this milestone by 24 hours and returns 5% of its payout to the Shipper when the milestone is confirmed. Final Delivery Deadline does not change.
+                      </div>
+                      {isShipper && !browserShowsMissedDeadline && (
+                        <div className="wizard-actions">
+                          <button className="btn btn-danger" disabled={Boolean(busyAction)} onClick={() => transact('reject-extension', (contract) => contract.rejectDeadlineExtension(id, milestone.index))} type="button">
+                            {busyAction === 'reject-extension' ? 'Rejecting…' : 'Reject request'}
+                          </button>
+                          <button className="btn btn-primary" disabled={Boolean(busyAction)} onClick={() => transact('approve-extension', (contract) => contract.approveDeadlineExtension(id, milestone.index))} type="button">
+                            {busyAction === 'approve-extension' ? 'Approving…' : 'Approve with 5% compensation'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {isCurrent && isCarrier && extensionWindowOpen && !extensionRequest?.requested && extensionFitsSchedule && (
+                    <div className="evidence-form">
+                      <strong>Request one 24-hour extension</strong>
+                      <p>Available only during the final 24 hours before this milestone deadline. New deadline: {formatDate(proposedExtensionDeadline)}.</p>
+                      <label>
+                        Extension reason
+                        <textarea value={extensionReason} onChange={(event) => setExtensionReason(event.target.value)} maxLength="1000" placeholder="Explain why another 24 hours are needed" />
+                      </label>
+                      <button className="btn btn-secondary" disabled={Boolean(busyAction) || !extensionReason.trim()} onClick={() => transact('request-extension', (contract) => contract.requestDeadlineExtension(id, milestone.index, extensionReason.trim()))} type="button">
+                        {busyAction === 'request-extension' ? 'Requesting…' : 'Request 24-hour extension'}
+                      </button>
+                    </div>
+                  )}
+                  {isCurrent && isCarrier && extensionWindowOpen && !extensionRequest?.requested && !extensionFitsSchedule && (
+                    <div className="notice error">A 24-hour extension would reach or pass the next milestone or Final Delivery Deadline, so it is unavailable.</div>
+                  )}
                   {milestone.proofHash !== ethers.ZeroHash && (
                     <div className="proof-box">
                       <small>Immutable evidence hash</small>
@@ -530,7 +617,7 @@ function AgreementDetail() {
                       <span>Submitted {formatDate(milestone.submittedAt)}</span>
                     </div>
                   )}
-                  {isCurrent && isCarrier && milestone.state === 0 && !milestoneExpired && !agreementExpired && (
+                  {isCarrier && canSubmitEvidence && (
                     <div className="evidence-form">
                       {storageConfigured === false && (
                         <div className="notice error">
@@ -565,7 +652,7 @@ function AgreementDetail() {
                       </small>
                     </div>
                   )}
-                  {isCurrent && isCarrier && milestone.state === 0 && (milestoneExpired || agreementExpired) && (
+                  {isCarrier && milestone.state === 0 && (milestoneExpired || agreementExpired) && (
                     <div className="notice error">The proof deadline has passed. Evidence can no longer be submitted.</div>
                   )}
                   {isCurrent && isShipper && milestone.state === 1 && (
@@ -658,7 +745,7 @@ function AgreementDetail() {
                   )}
                   {isCurrent && isShipper && milestone.state === 1 && agreementExpired && (
                     <div className="notice">
-                      This proof was submitted before its deadline. You may still confirm it, or open a dispute if the evidence is not acceptable.
+                      This proof was submitted before its deadline. You may still confirm it. After the Final Delivery Deadline, the Shipper may open a dispute if needed.
                     </div>
                   )}
                 </div>

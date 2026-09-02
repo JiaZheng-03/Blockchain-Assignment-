@@ -36,6 +36,8 @@ function Register() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const registrationSyncing = Boolean(success) && !isRegistered;
+  const deploymentUnavailable = ['missing', 'outdated', 'unreachable'].includes(deploymentStatus);
 
   useEffect(() => {
     setRole(requestedRole === '3' && !isDesignatedArbitrator ? '1' : requestedRole);
@@ -88,7 +90,10 @@ function Register() {
   return (
     <div className="auth-shell">
       <div className="form-card auth-card setup-card">
-        <Link className="brand dark" to="/">ChainCargo</Link>
+        <div className="auth-card-header">
+          <Link className="btn btn-secondary auth-back-button" to="/setup">← Back to setup</Link>
+          <Link className="brand dark" to="/">ChainCargo</Link>
+        </div>
         <span className="eyebrow">Step 1 of your account setup</span>
         <h2>Register a wallet role</h2>
         <p>Each MetaMask account has one permanent role in the Sepolia deployment.</p>
@@ -98,8 +103,11 @@ function Register() {
           <code>{account || 'Connect MetaMask to continue'}</code>
         </div>
 
-        {loading && isConnected && <div className="notice">Checking wallet registration…</div>}
-        {success && !isRegistered && <div className="notice success">{success}</div>}
+        {registrationSyncing ? (
+          <div className="notice success">Registration confirmed. Syncing your wallet profile…</div>
+        ) : loading && isConnected ? (
+          <div className="notice">Checking wallet registration…</div>
+        ) : null}
         {error && <div className="notice error">{error}</div>}
         {!isConfigured && <div className="notice error">Deploy the contract before registering.</div>}
         {!isConnected && (
@@ -124,13 +132,13 @@ function Register() {
             </button>
           </div>
         )}
-        {isConnected && isCorrectNetwork && deploymentStatus !== 'ready' && (
+        {!registrationSyncing && isConnected && isCorrectNetwork && deploymentUnavailable && (
           <div className="notice error">
             The Sepolia escrow contract is not available. Open the setup checklist and run the deployment command.
           </div>
         )}
 
-        {isRegistered ? (
+        {!loading && !registrationSyncing && (isRegistered ? (
           <>
             <div className="notice success">
               This wallet is registered as <strong>{profile.roleLabel}</strong>: {profile.name}.
@@ -196,13 +204,8 @@ function Register() {
                   : `Register as ${role === '1' ? 'Shipper' : role === '2' ? 'Carrier' : 'Arbitrator'}`}
             </button>
           </form>
-        )}
+        ))}
 
-        <div className="setup-help">
-          <strong>To test the complete workflow</strong>
-          <p>Register one MetaMask account as Shipper and a different account as Carrier. After the first registration, use the “Select another wallet” button above.</p>
-        </div>
-        <Link className="back-link" to="/setup">← Back to setup checklist</Link>
       </div>
     </div>
   );

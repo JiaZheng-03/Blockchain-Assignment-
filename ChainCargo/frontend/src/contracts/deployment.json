@@ -1,7 +1,7 @@
 {
-  "address": "0x3609C240393579F7Ed031Ccb1018cd6cFa1C47ec",
+  "address": "0xe4F9AEc0cE27A9a149541E4276a634D6b6e6C3dD",
   "chainId": 11155111,
-  "deploymentBlock": 11612807,
+  "deploymentBlock": 11620342,
   "abi": [
     {
       "inputs": [],
@@ -37,6 +37,17 @@
     {
       "inputs": [],
       "name": "DeadlineRefundAvailable",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "availableAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "DisputeNotAvailableBeforeFinalDeadline",
       "type": "error"
     },
     {
@@ -79,6 +90,27 @@
     {
       "inputs": [],
       "name": "EvidenceMissing",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ExtensionAlreadyRequested",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ExtensionRequestClosed",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "availableAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "ExtensionRequestTooEarly",
       "type": "error"
     },
     {
@@ -127,6 +159,22 @@
         }
       ],
       "name": "InvalidDeadline",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "proposedDeadline",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "maximumDeadline",
+          "type": "uint64"
+        }
+      ],
+      "name": "InvalidExtensionDeadline",
       "type": "error"
     },
     {
@@ -190,6 +238,11 @@
         }
       ],
       "name": "MilestoneDeadlineNotSequential",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NoPendingExtension",
       "type": "error"
     },
     {
@@ -388,6 +441,93 @@
         },
         {
           "indexed": true,
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "newDueAt",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "compensation",
+          "type": "uint256"
+        }
+      ],
+      "name": "DeadlineExtensionApproved",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        }
+      ],
+      "name": "DeadlineExtensionRejected",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "carrier",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "proposedDueAt",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "DeadlineExtensionRequested",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
           "internalType": "address",
           "name": "openedBy",
           "type": "address"
@@ -456,6 +596,37 @@
         }
       ],
       "name": "EvidenceRejected",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "shipper",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "ExtensionCompensationPaid",
       "type": "event"
     },
     {
@@ -642,6 +813,45 @@
     },
     {
       "inputs": [],
+      "name": "EXTENSION_COMPENSATION_BPS",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "EXTENSION_DURATION",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "EXTENSION_REQUEST_WINDOW",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "MAX_AGREEMENT_NOTES_LENGTH",
       "outputs": [
         {
@@ -781,6 +991,24 @@
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        }
+      ],
+      "name": "approveDeadlineExtension",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {
@@ -1019,6 +1247,60 @@
           "internalType": "uint256",
           "name": "agreementId",
           "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        }
+      ],
+      "name": "getExtensionRequest",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "requestedAt",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "proposedDueAt",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint256",
+          "name": "compensation",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "requested",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "pending",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "approved",
+          "type": "bool"
+        },
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
         }
       ],
       "name": "getMilestones",
@@ -1073,6 +1355,36 @@
             {
               "internalType": "bool",
               "name": "paid",
+              "type": "bool"
+            },
+            {
+              "internalType": "uint64",
+              "name": "extensionRequestedAt",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "extensionProposedDueAt",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint256",
+              "name": "extensionCompensation",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bool",
+              "name": "extensionRequested",
+              "type": "bool"
+            },
+            {
+              "internalType": "bool",
+              "name": "extensionPending",
+              "type": "bool"
+            },
+            {
+              "internalType": "bool",
+              "name": "extensionApproved",
               "type": "bool"
             }
           ],
@@ -1231,6 +1543,24 @@
           "type": "uint256"
         }
       ],
+      "name": "rejectDeadlineExtension",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        }
+      ],
       "name": "rejectEvidence",
       "outputs": [],
       "stateMutability": "nonpayable",
@@ -1250,6 +1580,29 @@
         }
       ],
       "name": "requestArbitrationAfterReviewTimeout",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "requestDeadlineExtension",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"

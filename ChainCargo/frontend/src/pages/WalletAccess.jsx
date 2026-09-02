@@ -57,10 +57,24 @@ function WalletAccess() {
     return () => { cancelled = true; };
   }, [authorizedAccounts, getReadContract, isCorrectNetwork]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !account) return;
+    const selectedDetails = details[account.toLowerCase()];
+    if (!selectedDetails) return;
+    navigate(selectedDetails.role === 'Unregistered' ? '/register' : '/dashboard', {
+      replace: true,
+    });
+  }, [account, details, isAuthenticated, navigate]);
+
   return (
     <div className="auth-shell">
       <main className="form-card auth-card wallet-login-card">
-        <Link className="brand dark" to="/">ChainCargo</Link>
+        <div className="auth-card-header">
+          <button className="btn btn-secondary auth-back-button" disabled={isConnecting} onClick={backToHome} type="button">
+            ← Back to Home
+          </button>
+          <Link className="brand dark" to="/">ChainCargo</Link>
+        </div>
         <span className="eyebrow">Wallet access</span>
         <h2>{authorizedAccounts.length ? 'Choose an account' : 'Connect to MetaMask'}</h2>
         <p>{authorizedAccounts.length ? 'Review every authorized account and select the one you want to login with.' : 'Select one or more MetaMask accounts to use with ChainCargo.'}</p>
@@ -104,17 +118,8 @@ function WalletAccess() {
                 {isConnecting ? 'Waiting for MetaMask…' : 'Switch account'}
               </button>
             </div>
-            {isAuthenticated && (
-              <div className="notice success setup-complete">
-                <div><strong>Wallet ready</strong><p>{formatAddress(account)} is connected and verified.</p></div>
-                <Link className="btn btn-primary" to={details[account.toLowerCase()]?.role !== 'Unregistered' ? '/dashboard' : '/register'}>Continue</Link>
-              </div>
-            )}
           </>
         )}
-        <button className="text-button back-link" disabled={isConnecting} onClick={backToHome} type="button">
-          Back to Home
-        </button>
       </main>
     </div>
   );

@@ -26,12 +26,9 @@ function Dashboard() {
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
   const {
     account,
-    authorizedAccountCount,
     isConnected,
-    isConnecting,
     formatAddress,
     networkName,
-    switchWallet,
   } = useWallet();
   const { isConfigured } = useContract();
   const { isArbitrator, isCarrier, isShipper, profile, roleLabel } = useProfile();
@@ -81,46 +78,6 @@ function Dashboard() {
 
   return (
     <section>
-      {(profile || isArbitrator) && (
-        <div className={`role-banner ${isArbitrator ? 'arbitrator-banner' : isShipper ? 'shipper-banner' : 'carrier-banner'}`}>
-          <div>
-            <span className="eyebrow">Current role: {roleLabel}</span>
-            <h2>
-              {isArbitrator
-                ? 'Review and resolve escrow disputes'
-                : isShipper
-                  ? 'Create and fund shipments'
-                  : 'Complete assigned shipments'}
-            </h2>
-            <p>
-              {isArbitrator
-                ? 'The deployment wallet can divide the remaining escrow only after a Shipper or Carrier opens a dispute.'
-                : isShipper
-                ? 'Shippers create agreements, choose a registered carrier, and fund milestone escrow.'
-                : 'Carriers do not create, fund, or confirm agreements. A Shipper assigns your wallet; you submit milestone evidence and receive confirmed payouts.'}
-            </p>
-          </div>
-          <div className="role-actions">
-            {isShipper && <Link className="btn btn-primary" to="/create-agreement">Create agreement</Link>}
-            <button className="btn btn-secondary" onClick={switchWallet} disabled={isConnecting}>
-              {isConnecting
-                ? 'Choose account in MetaMask…'
-                : authorizedAccountCount > 1
-                  ? isArbitrator
-                    ? 'Switch to participant wallet'
-                    : `Switch to ${isCarrier ? 'Shipper' : 'Carrier'} wallet`
-                  : isArbitrator
-                    ? 'Add a participant wallet'
-                    : `Add your ${isCarrier ? 'Shipper' : 'Carrier'} wallet`}
-            </button>
-            {authorizedAccountCount < 2 && (
-              <small className="wallet-permission-hint">
-                In MetaMask, choose <strong>Edit accounts</strong>, select both imported accounts, then click <strong>Connect</strong>. Your current wallet stays registered.
-              </small>
-            )}
-          </div>
-        </div>
-      )}
       <div className="stat-grid">
         {stats.map((stat) => (
           <div className="stat-box" key={stat.title}>
@@ -169,7 +126,7 @@ function Dashboard() {
               : 'Submit evidence before the milestone due date. The Shipper reviews it and releases the on-chain payout.'}
           </p>
           <div className="wizard-actions">
-            <Link className="btn btn-secondary" to="/history">View transaction history</Link>
+            {!isArbitrator && <Link className="btn btn-secondary" to="/history">View transaction history</Link>}
             {isShipper && <Link className="btn btn-primary" to="/create-agreement">Create & fund agreement</Link>}
           </div>
         </div>
@@ -177,7 +134,7 @@ function Dashboard() {
 
       <div className="panel">
         <div className="section-heading">
-          <h3>{isArbitrator ? 'Arbitration Cases' : 'Your Agreements'}</h3>
+          <h3>{isArbitrator ? 'Arbitration Cases & History' : 'Your Agreements'}</h3>
           <span className="badge">{agreements.length} total</span>
         </div>
         {isConnected && agreements.length > 0 && (

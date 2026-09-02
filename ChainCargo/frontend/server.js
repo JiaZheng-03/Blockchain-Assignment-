@@ -175,6 +175,8 @@ app.get('/api/storage/config', async (_request, response) => {
   }
   response.json({
     configured: Boolean(supabase && escrow && contractSupported),
+    contractAddress,
+    chainId,
     message,
   });
 });
@@ -275,13 +277,13 @@ app.post('/api/storage/upload-url', async (request, response) => {
       if (!addressesEqual(agreement.carrier, account)) {
         return sendError(response, 403, 'Only the assigned Carrier can upload this evidence.');
       }
-      if (Number(agreement.status) !== 0 || Number(agreement.nextMilestone) !== milestoneIndex) {
+      if (Number(agreement.status) !== 0) {
         return sendError(response, 409, 'This milestone is not currently accepting evidence.');
       }
       const milestones = await escrow.getMilestones(agreementId);
       currentMilestone = milestones[milestoneIndex];
       if (!currentMilestone || Number(currentMilestone.state) !== 0) {
-        return sendError(response, 409, 'The current milestone is not pending evidence.');
+        return sendError(response, 409, 'The selected milestone is not pending evidence.');
       }
       latestBlock = await provider.getBlock('latest');
       if (!latestBlock) throw new Error('Latest blockchain block was unavailable.');
@@ -295,7 +297,7 @@ app.post('/api/storage/upload-url', async (request, response) => {
 
     const blockTimestamp = BigInt(latestBlock.timestamp);
     if (blockTimestamp > currentMilestone.dueAt) {
-      return sendError(response, 409, 'The current milestone deadline has passed on-chain.');
+      return sendError(response, 409, 'The selected milestone deadline has passed on-chain.');
     }
     if (blockTimestamp > agreement.deadline) {
       return sendError(response, 409, 'The final agreement deadline has passed on-chain.');

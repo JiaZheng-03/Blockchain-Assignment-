@@ -55,6 +55,12 @@ contract LogisticsEscrow {
         uint64 approvedAt;
         MilestoneState state;
         bool paid;
+        uint64 extensionRequestedAt;
+        uint64 extensionProposedDueAt;
+        uint256 extensionCompensation;
+        bool extensionRequested;
+        bool extensionPending;
+        bool extensionApproved;
     }
 
     error Unauthorized();
@@ -84,20 +90,29 @@ contract LogisticsEscrow {
     error InputTooLong(uint256 providedLength, uint256 maximumLength);
     error InvalidProofURI();
     error DeadlineRefundAvailable();
+    error DisputeNotAvailableBeforeFinalDeadline(uint64 availableAt);
     error DuplicateAgreementName();
     error FixedMilestonesRequired();
     error EvidenceMissing();
     error EvidenceHashMismatch(bytes32 storedHash, bytes32 suppliedHash);
     error PaymentAlreadyReleased();
     error ReviewPeriodActive(uint64 availableAt);
+    error ExtensionRequestTooEarly(uint64 availableAt);
+    error ExtensionRequestClosed();
+    error ExtensionAlreadyRequested();
+    error InvalidExtensionDeadline(uint64 proposedDeadline, uint64 maximumDeadline);
+    error NoPendingExtension();
 
     address public immutable arbitrator;
-    uint256 public constant CONTRACT_VERSION = 5;
+    uint256 public constant CONTRACT_VERSION = 7;
     string public constant EVIDENCE_URI_SCHEME = "supabase://";
     uint256 public constant MAX_MILESTONES = 2;
     uint256 public constant REPUTATION_POINTS_PER_MILESTONE = 10;
     uint256 public constant MIN_SCHEDULE_DELAY = 1 hours;
     uint256 public constant EVIDENCE_REVIEW_PERIOD = 2 days;
+    uint256 public constant EXTENSION_REQUEST_WINDOW = 24 hours;
+    uint256 public constant EXTENSION_DURATION = 24 hours;
+    uint256 public constant EXTENSION_COMPENSATION_BPS = 500;
     uint256 public constant MAX_PROFILE_NAME_LENGTH = 100;
     uint256 public constant MAX_AGREEMENT_TITLE_LENGTH = 200;
     uint256 public constant MAX_AGREEMENT_NOTES_LENGTH = 2_000;
@@ -114,10 +129,16 @@ contract LogisticsEscrow {
     mapping(address => uint256[]) private userAgreementIds;
     mapping(address => mapping(bytes32 => bool)) private usedAgreementNames;
     mapping(address => uint256) public carrierReputation;
+    mapping(uint256 => mapping(uint256 => string)) private extensionReasons;
 
     uint256 private unlocked = 1;
 
-    event UserRegistered(address indexed account, Role indexed role, string name);
+    event UserRegistered(
+        address indexed account,
+        Role indexed role,
+        string name
+    );
+
     event AgreementCreated(
         uint256 indexed agreementId,
         address indexed shipper,
@@ -157,12 +178,40 @@ contract LogisticsEscrow {
         uint256 refundAmount
     );
     event AgreementCompleted(uint256 indexed agreementId);
-    event Refunded(uint256 indexed agreementId, address indexed shipper, uint256 amount);
-    event DisputeOpened(uint256 indexed agreementId, address indexed openedBy, string reason);
+    event Refunded(
+        uint256 indexed agreementId,
+        address indexed shipper,
+        uint256 amount
+    );
+    event DisputeOpened(
+        uint256 indexed agreementId,
+        address indexed openedBy,
+        string reason
+    );
     event ArbitrationRequested(
         uint256 indexed agreementId,
         uint256 indexed milestoneIndex,
         address indexed carrier
+    );
+    event DeadlineExtensionRequested(
+        uint256 indexed agreementId,
+        uint256 indexed milestoneIndex,
+        address indexed carrier,
+        uint64 proposedDueAt,
+        string reason
+    );
+    event DeadlineExtensionApproved(
+        uint256 indexed agreementId,
+        uint256 indexed milestoneIndex,
+        uint64 newDueAt,
+        uint256 compensation
+    );
+    event DeadlineExtensionRejected(uint256 indexed agreementId, uint256 indexed milestoneIndex);
+    event ExtensionCompensationPaid(
+        uint256 indexed agreementId,
+        uint256 indexed milestoneIndex,
+        address indexed shipper,
+        uint256 amount
     );
     event DisputeResolved(
         uint256 indexed agreementId,
@@ -178,7 +227,8 @@ contract LogisticsEscrow {
     }
 
     modifier agreementExists(uint256 agreementId) {
-        if (agreementId >= agreementCount) revert AgreementNotFound(agreementId);
+        if (agreementId >= agreementCount)
+            revert AgreementNotFound(agreementId);
         _;
     }
 
@@ -201,11 +251,15 @@ contract LogisticsEscrow {
         emit UserRegistered(msg.sender, role, name);
     }
 
-    function getProfile(address account) external view returns (UserProfile memory) {
+    function getProfile(
+        address account
+    ) external view returns (UserProfile memory) {
         return profiles[account];
     }
 
-    function getUsersByRole(Role role) external view returns (address[] memory) {
+    function getUsersByRole(
+        Role role
+    ) external view returns (address[] memory) {
         if (role == Role.None) revert InvalidRole();
         return roleAccounts[role];
     }
@@ -221,7 +275,8 @@ contract LogisticsEscrow {
         uint64[] calldata dueDates
     ) external payable returns (uint256 agreementId) {
         if (profiles[msg.sender].role != Role.Shipper) revert Unauthorized();
-        if (profiles[carrier].role != Role.Carrier) revert InvalidCarrier(carrier);
+        if (profiles[carrier].role != Role.Carrier)
+            revert InvalidCarrier(carrier);
         if (carrier == msg.sender) revert SameParticipant();
         if (bytes(title).length == 0) revert EmptyTitle();
         _requireMaximumLength(title, MAX_AGREEMENT_TITLE_LENGTH);
@@ -251,18 +306,24 @@ contract LogisticsEscrow {
         uint256 payoutTotal;
         uint64 previousDueDate = uint64(block.timestamp);
         for (uint256 i; i < payouts.length; ++i) {
-            if (bytes(milestoneNames[i]).length == 0) revert EmptyMilestoneName(i);
+            if (bytes(milestoneNames[i]).length == 0)
+                revert EmptyMilestoneName(i);
             _requireMaximumLength(milestoneNames[i], MAX_MILESTONE_NAME_LENGTH);
-            _requireMaximumLength(milestoneDetails[i], MAX_MILESTONE_DETAILS_LENGTH);
+            _requireMaximumLength(
+                milestoneDetails[i],
+                MAX_MILESTONE_DETAILS_LENGTH
+            );
             if (payouts[i] == 0) revert ZeroMilestonePayout(i);
             if (dueDates[i] <= previousDueDate) {
                 revert MilestoneDeadlineNotSequential(i);
             }
-            if (dueDates[i] > deadline) revert MilestoneDeadlineAfterAgreement(i);
+            if (dueDates[i] > deadline)
+                revert MilestoneDeadlineAfterAgreement(i);
             payoutTotal += payouts[i];
             previousDueDate = dueDates[i];
         }
-        if (payoutTotal != msg.value) revert PayoutTotalMismatch(payoutTotal, msg.value);
+        if (payoutTotal != msg.value)
+            revert PayoutTotalMismatch(payoutTotal, msg.value);
 
         usedAgreementNames[msg.sender][agreementNameKey] = true;
         agreementId = agreementCount++;
@@ -291,14 +352,26 @@ contract LogisticsEscrow {
                     submittedAt: 0,
                     approvedAt: 0,
                     state: MilestoneState.Pending,
-                    paid: false
+                    paid: false,
+                    extensionRequestedAt: 0,
+                    extensionProposedDueAt: 0,
+                    extensionCompensation: 0,
+                    extensionRequested: false,
+                    extensionPending: false,
+                    extensionApproved: false
                 })
             );
         }
 
         userAgreementIds[msg.sender].push(agreementId);
         userAgreementIds[carrier].push(agreementId);
-        emit AgreementCreated(agreementId, msg.sender, carrier, msg.value, deadline);
+        emit AgreementCreated(
+            agreementId,
+            msg.sender,
+            carrier,
+            msg.value,
+            deadline
+        );
     }
 
     function submitMilestoneProof(
@@ -330,7 +403,8 @@ contract LogisticsEscrow {
         Agreement storage agreement = agreements[agreementId];
         if (agreement.carrier != msg.sender) revert Unauthorized();
         if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
-        if (milestoneIndex != agreement.nextMilestone) revert InvalidMilestone();
+        if (milestoneIndex >= milestones[agreementId].length)
+            revert InvalidMilestone();
         if (block.timestamp > agreement.deadline) revert DeadlinePassed();
 
         Milestone storage milestone = milestones[agreementId][milestoneIndex];
@@ -344,7 +418,119 @@ contract LogisticsEscrow {
         milestone.proofURI = evidenceURI;
         milestone.submittedAt = uint64(block.timestamp);
         milestone.state = MilestoneState.Submitted;
-        emit MilestoneProofSubmitted(agreementId, milestoneIndex, evidenceHash, evidenceURI);
+        milestone.extensionPending = false;
+        emit MilestoneProofSubmitted(
+            agreementId,
+            milestoneIndex,
+            evidenceHash,
+            evidenceURI
+        );
+    }
+
+    function requestDeadlineExtension(
+        uint256 agreementId,
+        uint256 milestoneIndex,
+        string calldata reason
+    ) external agreementExists(agreementId) {
+        Agreement storage agreement = agreements[agreementId];
+        if (agreement.carrier != msg.sender) revert Unauthorized();
+        if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
+        if (milestoneIndex != agreement.nextMilestone) revert InvalidMilestone();
+        if (milestoneIndex >= milestones[agreementId].length) revert InvalidMilestone();
+        if (bytes(reason).length == 0) revert InvalidInput();
+        _requireMaximumLength(reason, MAX_DISPUTE_REASON_LENGTH);
+
+        Milestone storage milestone = milestones[agreementId][milestoneIndex];
+        if (milestone.state != MilestoneState.Pending) revert InvalidMilestone();
+        if (milestone.extensionRequested) revert ExtensionAlreadyRequested();
+        if (block.timestamp >= milestone.dueAt) revert ExtensionRequestClosed();
+        uint64 requestOpensAt = milestone.dueAt - uint64(EXTENSION_REQUEST_WINDOW);
+        if (block.timestamp < requestOpensAt) revert ExtensionRequestTooEarly(requestOpensAt);
+
+        uint64 proposedDueAt = milestone.dueAt + uint64(EXTENSION_DURATION);
+        uint64 maximumDeadline = milestoneIndex + 1 < milestones[agreementId].length
+            ? milestones[agreementId][milestoneIndex + 1].dueAt
+            : agreement.deadline;
+        if (proposedDueAt >= maximumDeadline) {
+            revert InvalidExtensionDeadline(proposedDueAt, maximumDeadline);
+        }
+
+        milestone.extensionRequestedAt = uint64(block.timestamp);
+        milestone.extensionProposedDueAt = proposedDueAt;
+        milestone.extensionRequested = true;
+        milestone.extensionPending = true;
+        extensionReasons[agreementId][milestoneIndex] = reason;
+        emit DeadlineExtensionRequested(
+            agreementId,
+            milestoneIndex,
+            msg.sender,
+            proposedDueAt,
+            reason
+        );
+    }
+
+    function approveDeadlineExtension(
+        uint256 agreementId,
+        uint256 milestoneIndex
+    ) external agreementExists(agreementId) {
+        Agreement storage agreement = agreements[agreementId];
+        if (agreement.shipper != msg.sender) revert Unauthorized();
+        if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
+        if (milestoneIndex != agreement.nextMilestone) revert InvalidMilestone();
+        Milestone storage milestone = milestones[agreementId][milestoneIndex];
+        if (!milestone.extensionPending) revert NoPendingExtension();
+        if (block.timestamp >= milestone.dueAt) revert ExtensionRequestClosed();
+
+        uint256 compensation = milestone.payout * EXTENSION_COMPENSATION_BPS / 10_000;
+        milestone.dueAt = milestone.extensionProposedDueAt;
+        milestone.extensionCompensation = compensation;
+        milestone.extensionPending = false;
+        milestone.extensionApproved = true;
+        emit DeadlineExtensionApproved(
+            agreementId,
+            milestoneIndex,
+            milestone.dueAt,
+            compensation
+        );
+    }
+
+    function rejectDeadlineExtension(
+        uint256 agreementId,
+        uint256 milestoneIndex
+    ) external agreementExists(agreementId) {
+        Agreement storage agreement = agreements[agreementId];
+        if (agreement.shipper != msg.sender) revert Unauthorized();
+        if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
+        if (milestoneIndex != agreement.nextMilestone) revert InvalidMilestone();
+        Milestone storage milestone = milestones[agreementId][milestoneIndex];
+        if (!milestone.extensionPending) revert NoPendingExtension();
+        milestone.extensionPending = false;
+        emit DeadlineExtensionRejected(agreementId, milestoneIndex);
+    }
+
+    function getExtensionRequest(
+        uint256 agreementId,
+        uint256 milestoneIndex
+    ) external view agreementExists(agreementId) returns (
+        uint64 requestedAt,
+        uint64 proposedDueAt,
+        uint256 compensation,
+        bool requested,
+        bool pending,
+        bool approved,
+        string memory reason
+    ) {
+        if (milestoneIndex >= milestones[agreementId].length) revert InvalidMilestone();
+        Milestone storage milestone = milestones[agreementId][milestoneIndex];
+        return (
+            milestone.extensionRequestedAt,
+            milestone.extensionProposedDueAt,
+            milestone.extensionCompensation,
+            milestone.extensionRequested,
+            milestone.extensionPending,
+            milestone.extensionApproved,
+            extensionReasons[agreementId][milestoneIndex]
+        );
     }
 
     function confirmMilestone(
@@ -352,7 +538,12 @@ contract LogisticsEscrow {
         uint256 milestoneIndex,
         bytes32 expectedEvidenceHash
     ) external agreementExists(agreementId) nonReentrant {
-        _confirmMilestone(agreementId, milestoneIndex, expectedEvidenceHash, true);
+        _confirmMilestone(
+            agreementId,
+            milestoneIndex,
+            expectedEvidenceHash,
+            true
+        );
     }
 
     /// @notice Compatibility wrapper for clients deployed before confirmMilestone was introduced.
@@ -360,9 +551,16 @@ contract LogisticsEscrow {
         uint256 agreementId,
         uint256 milestoneIndex
     ) external agreementExists(agreementId) nonReentrant {
-        if (milestoneIndex >= milestones[agreementId].length) revert InvalidMilestone();
-        bytes32 expectedEvidenceHash = milestones[agreementId][milestoneIndex].proofHash;
-        _confirmMilestone(agreementId, milestoneIndex, expectedEvidenceHash, true);
+        if (milestoneIndex >= milestones[agreementId].length)
+            revert InvalidMilestone();
+        bytes32 expectedEvidenceHash = milestones[agreementId][milestoneIndex]
+            .proofHash;
+        _confirmMilestone(
+            agreementId,
+            milestoneIndex,
+            expectedEvidenceHash,
+            true
+        );
     }
 
     /// @notice The Shipper may reject submitted evidence and recover all remaining escrow.
@@ -373,11 +571,14 @@ contract LogisticsEscrow {
         Agreement storage agreement = agreements[agreementId];
         if (agreement.shipper != msg.sender) revert Unauthorized();
         if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
-        if (milestoneIndex != agreement.nextMilestone) revert InvalidMilestone();
-        if (milestoneIndex >= milestones[agreementId].length) revert InvalidMilestone();
+        if (milestoneIndex != agreement.nextMilestone)
+            revert InvalidMilestone();
+        if (milestoneIndex >= milestones[agreementId].length)
+            revert InvalidMilestone();
 
         Milestone storage milestone = milestones[agreementId][milestoneIndex];
-        if (milestone.state != MilestoneState.Submitted) revert EvidenceMissing();
+        if (milestone.state != MilestoneState.Submitted)
+            revert EvidenceMissing();
 
         uint256 refund = agreement.remainingAmount;
         agreement.remainingAmount = 0;
@@ -396,16 +597,24 @@ contract LogisticsEscrow {
         Agreement storage agreement = agreements[agreementId];
         if (agreement.carrier != msg.sender) revert Unauthorized();
         if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
-        if (milestoneIndex != agreement.nextMilestone) revert InvalidMilestone();
-        if (milestoneIndex >= milestones[agreementId].length) revert InvalidMilestone();
+        if (milestoneIndex != agreement.nextMilestone)
+            revert InvalidMilestone();
+        if (milestoneIndex >= milestones[agreementId].length)
+            revert InvalidMilestone();
         Milestone storage milestone = milestones[agreementId][milestoneIndex];
-        if (milestone.state != MilestoneState.Submitted || milestone.submittedAt == 0) {
+        if (
+            milestone.state != MilestoneState.Submitted ||
+            milestone.submittedAt == 0
+        ) {
             revert EvidenceMissing();
         }
-        uint64 availableAt = milestone.submittedAt + uint64(EVIDENCE_REVIEW_PERIOD);
-        if (block.timestamp < availableAt) revert ReviewPeriodActive(availableAt);
+        uint64 availableAt = milestone.submittedAt +
+            uint64(EVIDENCE_REVIEW_PERIOD);
+        if (block.timestamp < availableAt)
+            revert ReviewPeriodActive(availableAt);
         agreement.status = AgreementStatus.Disputed;
-        string memory reason = "Shipper did not review submitted evidence within 2 days.";
+        string
+            memory reason = "Shipper did not review submitted evidence within 2 days.";
         emit ArbitrationRequested(agreementId, milestoneIndex, msg.sender);
         emit DisputeOpened(agreementId, msg.sender, reason);
     }
@@ -417,21 +626,31 @@ contract LogisticsEscrow {
         bool requireShipper
     ) private {
         Agreement storage agreement = agreements[agreementId];
-        if (requireShipper && agreement.shipper != msg.sender) revert Unauthorized();
+        if (requireShipper && agreement.shipper != msg.sender)
+            revert Unauthorized();
         if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
-        if (agreement.totalAmount == 0 || agreement.remainingAmount == 0) revert InvalidStatus();
-        if (milestoneIndex >= milestones[agreementId].length) revert InvalidMilestone();
+        if (agreement.totalAmount == 0 || agreement.remainingAmount == 0)
+            revert InvalidStatus();
+        if (milestoneIndex >= milestones[agreementId].length)
+            revert InvalidMilestone();
 
         Milestone storage milestone = milestones[agreementId][milestoneIndex];
         if (milestone.paid || milestone.state == MilestoneState.Confirmed) {
             revert PaymentAlreadyReleased();
         }
-        if (milestoneIndex != agreement.nextMilestone) revert InvalidMilestone();
-        if (milestone.state != MilestoneState.Submitted || milestone.proofHash == bytes32(0)) {
+        if (milestoneIndex != agreement.nextMilestone)
+            revert InvalidMilestone();
+        if (
+            milestone.state != MilestoneState.Submitted ||
+            milestone.proofHash == bytes32(0)
+        ) {
             revert EvidenceMissing();
         }
         if (expectedEvidenceHash != milestone.proofHash) {
-            revert EvidenceHashMismatch(milestone.proofHash, expectedEvidenceHash);
+            revert EvidenceHashMismatch(
+                milestone.proofHash,
+                expectedEvidenceHash
+            );
         }
 
         uint256 payout = milestone.payout;
@@ -451,12 +670,14 @@ contract LogisticsEscrow {
             agreement.status = AgreementStatus.Completed;
             emit AgreementCompleted(agreementId);
         }
+        uint256 compensation = milestone.extensionCompensation;
+        uint256 carrierPayment = payout - compensation;
         emit MilestoneConfirmed(
             agreementId,
             milestoneIndex,
             milestone.proofHash,
             msg.sender,
-            payout
+            carrierPayment
         );
         emit CarrierReputationAwarded(
             agreement.carrier,
@@ -465,7 +686,16 @@ contract LogisticsEscrow {
             REPUTATION_POINTS_PER_MILESTONE,
             carrierReputation[agreement.carrier]
         );
-        _sendValue(agreement.carrier, payout);
+        if (compensation != 0) {
+            emit ExtensionCompensationPaid(
+                agreementId,
+                milestoneIndex,
+                agreement.shipper,
+                compensation
+            );
+            _sendValue(agreement.shipper, compensation);
+        }
+        _sendValue(agreement.carrier, carrierPayment);
     }
 
     function isAgreementNameAvailable(
@@ -476,16 +706,20 @@ contract LogisticsEscrow {
         return !usedAgreementNames[shipper][_agreementNameKey(title)];
     }
 
-    /// @notice Anyone can trigger an eligible refund; funds always return to the shipper.
+    /// @notice Only the fixed Shipper may recover escrow after a missed evidence deadline.
     function claimRefundAfterDeadline(
         uint256 agreementId
     ) external agreementExists(agreementId) nonReentrant {
         Agreement storage agreement = agreements[agreementId];
+        if (agreement.shipper != msg.sender) revert Unauthorized();
         if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
 
-        Milestone storage current = milestones[agreementId][agreement.nextMilestone];
-        bool missedUnsubmittedMilestone =
-            current.state == MilestoneState.Pending && block.timestamp > current.dueAt;
+        Milestone storage current = milestones[agreementId][
+            agreement.nextMilestone
+        ];
+        bool missedUnsubmittedMilestone = current.state ==
+            MilestoneState.Pending &&
+            block.timestamp > current.dueAt;
         if (!missedUnsubmittedMilestone) {
             revert DeadlineNotPassed();
         }
@@ -502,20 +736,12 @@ contract LogisticsEscrow {
         string calldata reason
     ) external agreementExists(agreementId) {
         Agreement storage agreement = agreements[agreementId];
-        if (msg.sender != agreement.shipper && msg.sender != agreement.carrier) {
-            revert Unauthorized();
-        }
+        if (msg.sender != agreement.shipper) revert Unauthorized();
         if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
         if (bytes(reason).length == 0) revert InvalidInput();
         _requireMaximumLength(reason, MAX_DISPUTE_REASON_LENGTH);
-
-        Milestone storage current = milestones[agreementId][agreement.nextMilestone];
-        if (msg.sender == agreement.carrier && current.state == MilestoneState.Submitted) {
-            uint64 availableAt = current.submittedAt + uint64(EVIDENCE_REVIEW_PERIOD);
-            if (block.timestamp < availableAt) revert ReviewPeriodActive(availableAt);
-        }
-        if (current.state == MilestoneState.Pending && block.timestamp > current.dueAt) {
-            revert DeadlineRefundAvailable();
+        if (block.timestamp <= agreement.deadline) {
+            revert DisputeNotAvailableBeforeFinalDeadline(agreement.deadline + 1);
         }
 
         agreement.status = AgreementStatus.Disputed;
@@ -526,11 +752,15 @@ contract LogisticsEscrow {
         uint256 agreementId,
         uint256 shipperAmount
     ) external agreementExists(agreementId) nonReentrant {
-        if (msg.sender != arbitrator || profiles[msg.sender].role != Role.Arbitrator) {
+        if (
+            msg.sender != arbitrator ||
+            profiles[msg.sender].role != Role.Arbitrator
+        ) {
             revert Unauthorized();
         }
         Agreement storage agreement = agreements[agreementId];
-        if (agreement.status != AgreementStatus.Disputed) revert InvalidStatus();
+        if (agreement.status != AgreementStatus.Disputed)
+            revert InvalidStatus();
         if (shipperAmount > agreement.remainingAmount) revert InvalidInput();
 
         uint256 carrierAmount = agreement.remainingAmount - shipperAmount;
@@ -554,7 +784,9 @@ contract LogisticsEscrow {
         return milestones[agreementId];
     }
 
-    function getUserAgreementIds(address account) external view returns (uint256[] memory) {
+    function getUserAgreementIds(
+        address account
+    ) external view returns (uint256[] memory) {
         return userAgreementIds[account];
     }
 
@@ -563,8 +795,12 @@ contract LogisticsEscrow {
     ) external view agreementExists(agreementId) returns (bool) {
         Agreement storage agreement = agreements[agreementId];
         if (agreement.status != AgreementStatus.Active) return false;
-        Milestone storage current = milestones[agreementId][agreement.nextMilestone];
-        return current.state == MilestoneState.Pending && block.timestamp > current.dueAt;
+        Milestone storage current = milestones[agreementId][
+            agreement.nextMilestone
+        ];
+        return
+            current.state == MilestoneState.Pending &&
+            block.timestamp > current.dueAt;
     }
 
     function _sendValue(address recipient, uint256 amount) private {
@@ -572,7 +808,10 @@ contract LogisticsEscrow {
         if (!success) revert TransferFailed();
     }
 
-    function _requireMaximumLength(string calldata value, uint256 maximumLength) private pure {
+    function _requireMaximumLength(
+        string calldata value,
+        uint256 maximumLength
+    ) private pure {
         uint256 length = bytes(value).length;
         if (length > maximumLength) revert InputTooLong(length, maximumLength);
     }
@@ -580,19 +819,20 @@ contract LogisticsEscrow {
     /// @dev New evidence uses a self-contained Supabase reference. Legacy IPFS references remain
     /// readable so agreements created before the storage migration do not lose their evidence.
     /// More detailed path/CID validation happens before the frontend fetches either location.
-    function _isValidProofURI(string calldata proofURI) private pure returns (bool) {
+    function _isValidProofURI(
+        string calldata proofURI
+    ) private pure returns (bool) {
         bytes calldata value = bytes(proofURI);
-        if (value.length <= 7 || value.length > MAX_PROOF_URI_LENGTH) return false;
-        bool isLegacyIpfs =
-            value[0] == "i" &&
+        if (value.length <= 7 || value.length > MAX_PROOF_URI_LENGTH)
+            return false;
+        bool isLegacyIpfs = value[0] == "i" &&
             value[1] == "p" &&
             value[2] == "f" &&
             value[3] == "s" &&
             value[4] == ":" &&
             value[5] == "/" &&
             value[6] == "/";
-        bool isSupabase =
-            value.length > 11 &&
+        bool isSupabase = value.length > 11 &&
             value[0] == "s" &&
             value[1] == "u" &&
             value[2] == "p" &&
@@ -609,7 +849,9 @@ contract LogisticsEscrow {
 
     /// @dev Agreement names are unique per Shipper after trimming/collapsing ASCII whitespace
     /// and converting ASCII letters to lowercase.
-    function _agreementNameKey(string calldata title) private pure returns (bytes32) {
+    function _agreementNameKey(
+        string calldata title
+    ) private pure returns (bytes32) {
         bytes calldata source = bytes(title);
         bytes memory normalized = new bytes(source.length);
         uint256 writeIndex;
@@ -617,8 +859,10 @@ contract LogisticsEscrow {
 
         for (uint256 i; i < source.length; ++i) {
             uint8 character = uint8(source[i]);
-            bool isWhitespace =
-                character == 32 || character == 9 || character == 10 || character == 13;
+            bool isWhitespace = character == 32 ||
+                character == 9 ||
+                character == 10 ||
+                character == 13;
             if (isWhitespace) {
                 if (writeIndex != 0) pendingSpace = true;
                 continue;
