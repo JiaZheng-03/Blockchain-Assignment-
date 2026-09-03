@@ -51,6 +51,7 @@ function AgreementDetail() {
   const [disputeInfo, setDisputeInfo] = useState(null);
   const [disputeLookupError, setDisputeLookupError] = useState('');
   const [busyAction, setBusyAction] = useState('');
+  const [evidenceDecision, setEvidenceDecision] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [nowSeconds, setNowSeconds] = useState(0);
@@ -246,6 +247,27 @@ function AgreementDetail() {
     } finally {
       setBusyAction('');
     }
+  };
+
+  const confirmEvidenceDecision = () => {
+    const decision = evidenceDecision;
+    if (!decision) return;
+    setEvidenceDecision(null);
+    if (decision.type === 'confirm') {
+      transact(
+        'confirm',
+        (contract) => contract.confirmMilestone(
+          id,
+          decision.milestone.index,
+          decision.milestone.proofHash,
+        ),
+      );
+      return;
+    }
+    transact(
+      'reject',
+      (contract) => contract.rejectEvidence(id, decision.milestone.index),
+    );
   };
 
   const selectEvidenceFile = (file) => {
@@ -684,35 +706,28 @@ function AgreementDetail() {
                             : verificationForMilestone.message || 'Verification failed. The downloaded file does not match the on-chain hash; do not release payment.'}
                         </div>
                       )}
-                      <button
-                        className="btn btn-primary"
-                        disabled={Boolean(busyAction) || !evidenceVerified}
-                        onClick={() => transact(
-                          'confirm',
-                          (contract) => contract.confirmMilestone(
-                            id,
-                            milestone.index,
-                            milestone.proofHash,
-                          ),
-                        )}
-                      >
-                        {busyAction === 'confirm'
-                          ? 'Confirming & paying…'
-                          : `Confirm milestone & pay · ${milestone.payoutEth} ETH`}
-                      </button>
-                      <button
-                        className="btn btn-danger"
-                        disabled={Boolean(busyAction)}
-                        onClick={() => transact(
-                          'reject',
-                          (contract) => contract.rejectEvidence(id, milestone.index),
-                        )}
-                        type="button"
-                      >
-                        {busyAction === 'reject'
-                          ? 'Rejecting & refunding…'
-                          : `Reject evidence & refund ${agreement.remainingEth} ETH`}
-                      </button>
+                      <div className="evidence-decision-actions">
+                        <button
+                          className="btn btn-primary"
+                          disabled={Boolean(busyAction) || !evidenceVerified}
+                          onClick={() => setEvidenceDecision({ type: 'confirm', milestone })}
+                          type="button"
+                        >
+                          {busyAction === 'confirm'
+                            ? 'Confirming & paying…'
+                            : `Confirm & pay · ${milestone.payoutEth} ETH`}
+                        </button>
+                        <button
+                          className="btn btn-danger"
+                          disabled={Boolean(busyAction)}
+                          onClick={() => setEvidenceDecision({ type: 'reject', milestone })}
+                          type="button"
+                        >
+                          {busyAction === 'reject'
+                            ? 'Rejecting & refunding…'
+                            : `Reject & refund ${agreement.remainingEth} ETH`}
+                        </button>
+                      </div>
                     </div>
                   )}
                   {isCurrent && milestone.state === 1 && !isShipper && !reviewExpired && (
@@ -757,6 +772,42 @@ function AgreementDetail() {
           <p className="notice">This agreement is read-only for the connected wallet.</p>
         )}
       </div>
+      {evidenceDecision && (
+        <div className="toast-backdrop" role="presentation">
+          <section
+            aria-describedby="evidence-decision-message"
+            aria-labelledby="evidence-decision-title"
+            aria-modal="true"
+            className="toast-popup confirmation-popup"
+            role="alertdialog"
+          >
+            <h2 id="evidence-decision-title">
+              {evidenceDecision.type === 'confirm' ? 'Confirm milestone payment?' : 'Reject this evidence?'}
+            </h2>
+            <div className="toast-message" id="evidence-decision-message">
+              <strong>This blockchain action cannot be undone.</strong>
+              <p>
+                {evidenceDecision.type === 'confirm'
+                  ? `${evidenceDecision.milestone.payoutEth} ETH will be released for this milestone.`
+                  : `${agreement.remainingEth} ETH of remaining escrow will be refunded to the Shipper.`}
+              </p>
+            </div>
+            <div className="confirmation-actions">
+              <button className="confirmation-cancel" onClick={() => setEvidenceDecision(null)} type="button">
+                Cancel
+              </button>
+              <button
+                autoFocus
+                className={evidenceDecision.type === 'confirm' ? 'confirmation-confirm' : 'confirmation-reject'}
+                onClick={confirmEvidenceDecision}
+                type="button"
+              >
+                {evidenceDecision.type === 'confirm' ? 'Confirm & Pay' : 'Reject & Refund'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   );
 }

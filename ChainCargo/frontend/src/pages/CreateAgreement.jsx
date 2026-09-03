@@ -6,6 +6,7 @@ import { useProfile } from '../hooks/useProfile';
 import {
   FIXED_MILESTONES,
   MIN_SCHEDULE_BUFFER_MS,
+  generateAgreementName,
   toDateTimeLocalValue,
   validateAgreementBasics,
   validateAgreementDraft,
@@ -52,8 +53,9 @@ function CreateAgreement() {
     waitForTransaction,
   } = useContract();
   const { isShipper, isRegistered, loading: profileLoading, profile } = useProfile();
+  const titleAccount = useRef(account);
   const [form, setForm] = useState({
-    title: '',
+    title: generateAgreementName(account),
     carrier: '',
     totalAmount: '',
     deadline: '',
@@ -70,6 +72,12 @@ function CreateAgreement() {
   const [minimumDateTime, setMinimumDateTime] = useState('');
   const [minimumMilestoneDateTime, setMinimumMilestoneDateTime] = useState('');
   const [step, setStep] = useState(1);
+
+  useEffect(() => {
+    if (!account || account.toLowerCase() === titleAccount.current?.toLowerCase()) return;
+    titleAccount.current = account;
+    setForm((current) => ({ ...current, title: generateAgreementName(account) }));
+  }, [account]);
 
   useEffect(() => {
     const updateMinimum = () => {
@@ -386,8 +394,8 @@ function CreateAgreement() {
             </div>
             <label>
               Agreement Name
-              <input aria-invalid={errorTarget === 'title'} name="title" value={form.title} onChange={updateForm} required placeholder="Shipment #001" />
-              <small>Names are unique for this Shipper wallet, ignoring capitalization and repeated spaces.</small>
+              <input aria-invalid={errorTarget === 'title'} name="title" value={form.title} readOnly />
+              <small>This unique name is generated automatically from the creation time and Shipper wallet.</small>
               {errorTarget === 'title' && <small className="field-error">{error}</small>}
             </label>
             <label>

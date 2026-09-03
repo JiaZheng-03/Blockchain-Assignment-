@@ -184,7 +184,7 @@ function Dashboard() {
         {balanceError && <div className="notice error">{balanceError}</div>}
         {agreementsError && <div className="notice error">{agreementsError}</div>}
         {agreementsLoading ? <p>Loading on-chain agreements…</p> : isConnected && agreements.length && visibleAgreements.length ? (
-          <div className="grid grid-2">
+          <div className="agreement-list">
             {visibleAgreements.map((agreement) => {
               const actionDeadline = getAgreementActionDeadline(agreement);
               const deadlineState = getDeadlineState(

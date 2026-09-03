@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import {
   FIXED_MILESTONES,
   MAX_MILESTONES,
+  generateAgreementName,
   normalizeAgreementName,
   validateAgreementDraft,
 } from '../src/utils/agreementValidation.js';
+
 import { ethers } from 'ethers';
 import { ESCROW_ABI } from '../src/contracts/abi.js';
 import { friendlyContractError } from '../src/utils/contractErrors.js';
@@ -77,6 +79,13 @@ const filterAgreements = [
   { id: 2, title: 'Warehouse delivery', shipper: carrier, carrier: shipper, status: 3, deadline: 500, createdAt: 200 },
   { id: 3, title: 'Completed cargo', shipper, carrier, status: 1, deadline: 400, createdAt: 150 },
 ];
+
+test('generates a stable agreement name from time and the Shipper wallet', () => {
+  assert.equal(
+    generateAgreementName('0x0022228b92561448cf4219f939b56d7c86928abd', new Date('2026-09-03T14:30:52.123Z')),
+    'Shipment-20260903143052123-8ABD',
+  );
+});
 
 test('searches agreements by title, ID and participant address', () => {
   assert.deepEqual(

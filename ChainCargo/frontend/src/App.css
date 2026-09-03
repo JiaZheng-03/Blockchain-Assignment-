@@ -907,6 +907,19 @@ textarea:focus {
 
 .agreement-card {
   border-left-width: 5px;
+  display: flex;
+  flex-direction: column;
+  min-height: 22rem;
+}
+
+.agreement-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.agreement-card > .btn {
+  align-self: flex-end;
+  margin-top: auto;
 }
 
 .agreement-card.deadline-safe {
@@ -1119,6 +1132,47 @@ textarea[aria-invalid="true"] {
   display: grid;
   gap: 0.75rem;
   padding: 1rem;
+}
+
+.evidence-decision-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+
+.evidence-decision-actions .btn {
+  width: auto;
+}
+
+.confirmation-popup h2 {
+  color: #172033;
+}
+
+.confirmation-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-top: 1.25rem;
+}
+
+.toast-popup .confirmation-actions button {
+  margin-top: 0;
+  min-width: 8.5rem;
+}
+
+.toast-popup .confirmation-actions .confirmation-cancel {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.toast-popup .confirmation-actions .confirmation-confirm {
+  background: #2563eb;
+}
+
+.toast-popup .confirmation-actions .confirmation-reject {
+  background: #b91c1c;
 }
 
 .carrier-reputation-preview {
@@ -1881,6 +1935,8 @@ button.role-card {
   }
 
   .wizard-actions,
+  .evidence-decision-actions,
+  .confirmation-actions,
   .review-milestone,
   .setup-complete {
     align-items: stretch;

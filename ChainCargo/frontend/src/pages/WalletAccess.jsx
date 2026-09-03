@@ -76,16 +76,30 @@ function WalletAccess() {
           <Link className="brand dark" to="/">ChainCargo</Link>
         </div>
         <span className="eyebrow">Wallet access</span>
-        <h2>{authorizedAccounts.length ? 'Choose an account' : 'Connect to MetaMask'}</h2>
-        <p>{authorizedAccounts.length ? 'Review every authorized account and select the one you want to login with.' : 'Select one or more MetaMask accounts to use with ChainCargo.'}</p>
+        <h2>
+          {isConnecting
+            ? 'Select accounts in MetaMask'
+            : authorizedAccounts.length
+              ? 'Choose an account'
+              : 'Connect to MetaMask'}
+        </h2>
+        <p>
+          {isConnecting
+            ? 'Finish choosing and confirming the accounts in the MetaMask window.'
+            : authorizedAccounts.length
+              ? 'Review every authorized account and select the one you want to login with.'
+              : 'Select one or more MetaMask accounts to use with ChainCargo.'}
+        </p>
         {error && <div className="notice error">{error}</div>}
 
-        {!authorizedAccounts.length ? (
+        {isConnecting ? (
+          <div className="notice">Waiting for MetaMask account selection…</div>
+        ) : !authorizedAccounts.length ? (
           !hasMetaMask ? (
             <a className="btn btn-primary" href="https://metamask.io/download/" target="_blank" rel="noreferrer">Install MetaMask</a>
           ) : (
-            <button className="btn btn-primary" disabled={isConnecting} onClick={connectWallet} type="button">
-              {isConnecting ? 'Waiting for MetaMask…' : 'Connect to MetaMask'}
+            <button className="btn btn-primary" onClick={connectWallet} type="button">
+              Connect to MetaMask
             </button>
           )
         ) : (

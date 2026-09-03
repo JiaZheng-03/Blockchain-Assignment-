@@ -19,6 +19,12 @@ export const FIXED_MILESTONES = Object.freeze([
   }),
 ]);
 
+export function generateAgreementName(account, now = new Date()) {
+  const timestamp = now.toISOString().replace(/[-:TZ.]/g, '').slice(0, 17);
+  const walletSuffix = String(account || 'wallet').slice(-4).toUpperCase();
+  return `Shipment-${timestamp}-${walletSuffix}`;
+}
+
 export function normalizeAgreementName(value) {
   return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
