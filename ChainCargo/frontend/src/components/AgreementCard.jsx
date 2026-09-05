@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import Icon from './Icon';
 
 function AgreementCard({
   agreementId,
@@ -15,20 +16,25 @@ function AgreementCard({
 }) {
   return (
     <article className={`card agreement-card deadline-${deadlineState?.level || 'closed'}`}>
-      {agreementId !== undefined && <span className="eyebrow">Agreement #{agreementId}</span>}
+      <div className="agreement-card-top">
+        <Icon name="box" size={16} />
+        {agreementId !== undefined && <span className="agreement-id">AGREEMENT #{agreementId}</span>}
+        <span className={`badge status-${status?.toLowerCase().replaceAll(' ', '-')}`}>{status}</span>
+      </div>
       <h3>{title}</h3>
-      <p>Total Amount: {amount}</p>
-      {remaining && <p>Escrow Remaining: {remaining}</p>}
-      {deadline && <p>{deadlineLabel}: {deadline}</p>}
+      <div className="agreement-values">
+        <span><small>Total escrow</small><strong>{amount}</strong></span>
+        {remaining && <span><small>Remaining</small><strong>{remaining}</strong></span>}
+      </div>
+      {deadline && <div className="agreement-date"><Icon name="clock" size={15} /><span>{deadlineLabel}<strong>{deadline}</strong></span></div>}
       {deadlineState?.countdown && (
         <div className={`deadline-indicator deadline-${deadlineState.level}`} aria-live="polite">
           <strong>{deadlineState.countdown}</strong>
           {refundAvailable && <span>Deadline missed — remaining escrow is refundable to the Shipper.</span>}
         </div>
       )}
-      <p>Status: <span className="badge">{status}</span></p>
       <Link className="btn btn-secondary" to={link}>
-        {actionLabel}
+        {actionLabel}<Icon name="arrow" size={15} />
       </Link>
     </article>
   );

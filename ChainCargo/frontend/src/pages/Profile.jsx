@@ -7,6 +7,7 @@ import { useAgreements } from '../hooks/useAgreements';
 import { useCarrierReputation } from '../hooks/useCarrierReputation';
 import { useWalletBalance } from '../hooks/useWalletBalance';
 import { getSepoliaAddressUrl } from '../utils/sepoliaExplorer';
+import Icon from '../components/Icon';
 
 function Profile() {
   const {
@@ -28,10 +29,17 @@ function Profile() {
     .reduce((total, agreement) => total + agreement.remainingAmount, 0n);
 
   return (
-    <div className="grid grid-2">
+    <section>
+      <div className="page-heading"><div><h1>Wallet & profile</h1><p>Your on-chain identity and the funds behind your shipments.</p></div><Link className="btn btn-secondary" to="/login"><Icon name="wallet" size={16} />Manage wallet</Link></div>
+      <div className="grid grid-2">
       <div className="panel">
+        <div className="profile-header">
+        <span className="account-avatar">{profile?.name?.slice(0, 2).toUpperCase() || <Icon name="user" />}</span>
+        <div>
         <span className="eyebrow">On-chain identity</span>
         <h2>{loading ? 'Loading…' : isArbitrator ? 'Contract deployer' : profile?.name || 'Unregistered wallet'}</h2>
+        </div>
+        </div>
         <div className="detail-grid single">
           <div><small>Role</small><strong>{roleLabel}</strong></div>
           <div>
@@ -70,7 +78,7 @@ function Profile() {
       </div>
       <div className="panel">
         <span className="eyebrow">Portfolio</span>
-        <h2>{displayBalance}</h2>
+        <h2 className="profile-balance">{displayBalance}</h2>
         {balanceError && <div className="notice error">{balanceError}</div>}
         <div className="detail-grid single">
           <div>
@@ -88,7 +96,8 @@ function Profile() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </section>
   );
 }
 

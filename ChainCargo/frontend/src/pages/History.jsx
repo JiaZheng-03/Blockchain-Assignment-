@@ -6,6 +6,7 @@ import { friendlyContractError, useContract } from '../context/ContractContext';
 import { normalizeAgreement } from '../hooks/useAgreements';
 import { useProfile } from '../hooks/useProfile';
 import { buildAgreementIds, isArbitrationAgreement } from '../utils/arbitration';
+import Icon from '../components/Icon';
 import {
   decodeEscrowEvent,
   groupAgreementHistory,
@@ -42,6 +43,8 @@ function History() {
   } = useContract();
   const [agreements, setAgreements] = useState([]);
   const [events, setEvents] = useState([]);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [historyNotice, setHistoryNotice] = useState(location.state?.historyNotice || '');
@@ -176,71 +179,99 @@ function History() {
   }, [account, address, deployment, getReadContract, isArbitrator, isConfigured, isConnected, location.state, refreshKey]);
 
   const agreementHistory = groupAgreementHistory(agreements, events);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredHistory = agreementHistory.filter((agreement) => {
+    const matchesStatus = statusFilter === 'all'
+      || (statusFilter === 'pending' && agreement.status === 5)
+      || String(agreement.status) === statusFilter;
+    return matchesStatus && (
+      !normalizedQuery ||
+      [agreement.title, String(agreement.id), `#${agreement.id}`, agreement.shipper, agreement.carrier]
+        .some((value) => String(value || '').toLowerCase().includes(normalizedQuery))
+    );
+  });
+  const tabs = [
+    ['all', 'All'],
+    ['0', 'Active'],
+    ['pending', 'Pending'],
+    ['1', 'Completed'],
+    ['2', 'Refunded'],
+    ['3', 'Disputed'],
+    ['4', 'Resolved'],
+    ['6', 'Rejected'],
+  ];
+  const exportHistory = () => {
+    const escapeCell = (value) => {
+      const text = String(value ?? '');
+      const safe = /^[\s]*[=+\-@]/.test(text) ? `'${text}` : text;
+      return `"${safe.replaceAll('"', '""')}"`;
+    };
+    const rows = [
+      ['Agreement ID', 'Agreement', 'Total ETH', 'Remaining ETH', 'Status', 'Last activity (UTC)', 'Event count'],
+      ...filteredHistory.map((agreement) => [
+        agreement.id, agreement.title, agreement.totalEth, agreement.remainingEth,
+        agreement.statusLabel, new Date(agreement.latestTimestamp * 1000).toISOString(), agreement.eventCount,
+      ]),
+    ];
+    const csv = rows.map((row) => row.map(escapeCell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'chaincargo-transactions.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   return (
-    <div className="panel">
-      <div className="section-heading">
-        <div>
-          <h2>{isArbitrator ? 'Dispute History' : 'Agreement History'}</h2>
-          <p>
-            {isArbitrator
-              ? 'Open a disputed case to resolve it, or review the final record of a resolved case.'
-              : 'Each agreement is grouped into one record. Open it to review milestones and details.'}
-          </p>
+    <section>
+      <div className="page-heading">
+        <div><h1>{isArbitrator ? 'Dispute history' : 'Transactions'}</h1><p>{isArbitrator ? 'A complete record of cases and their on-chain resolutions.' : 'The complete history of your agreements and escrow movements.'}</p></div>
+        <div className="page-heading-actions">
+          <button className="btn btn-secondary" disabled={loading || !filteredHistory.length} onClick={exportHistory} type="button"><Icon name="download" size={16} />Export CSV</button>
         </div>
-        <span className="badge">{agreementHistory.length} agreements</span>
       </div>
-      {error && <div className="notice error">{error}</div>}
-      {historyNotice && <div className="notice">{historyNotice}</div>}
-      {loading ? <p>Reading agreement history…</p> : agreementHistory.length ? (
-        <div className="history-agreement-list">
-          {agreementHistory.map((agreement) => (
-            <Link
-              className="history-agreement-card"
-              key={agreement.id}
-              to={`/agreement/${agreement.id}`}
-            >
-              <div className="history-agreement-heading">
-                <div>
-                  <small>Agreement #{agreement.id}</small>
-                  <h3>{agreement.title}</h3>
-                </div>
-                <span className="badge">{agreement.statusLabel}</span>
-              </div>
-              <div className="history-agreement-stats">
-                <span><small>Total escrow</small><strong>{agreement.totalEth} ETH</strong></span>
-                <span><small>Remaining</small><strong>{agreement.remainingEth} ETH</strong></span>
-                <span>
-                  <small>Last activity</small>
-                  <strong>
-                    {agreement.latestEvent
-                      ? agreement.latestEvent.name.replace(/([A-Z])/g, ' $1').trim()
-                      : 'Agreement created'}
-                  </strong>
-                </span>
-                <span>
-                  <small>Updated</small>
-                  <strong>{new Date(agreement.latestTimestamp * 1000).toLocaleString()}</strong>
-                </span>
-              </div>
-              <div className="history-agreement-footer">
-                <span>{agreement.eventCount} recorded event{agreement.eventCount === 1 ? '' : 's'}</span>
-                <strong>View agreement details →</strong>
-              </div>
-            </Link>
-          ))}
+      <div className="panel table-panel">
+        <div className="table-toolbar">
+          <div className="filter-tabs" role="group" aria-label="Filter transactions by status">
+            {tabs.map(([value, label]) => <button className={statusFilter === value ? 'active' : ''} aria-pressed={statusFilter === value} key={value} onClick={() => setStatusFilter(value)} type="button">{label}</button>)}
+          </div>
+          <label className="table-search"><span className="sr-only">Search transactions</span><Icon name="search" size={15} /><input placeholder="Search agreement..." type="search" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
         </div>
-      ) : (
-        <p>
-          {isConnected
-            ? isArbitrator
-              ? 'No disputed or resolved agreements found.'
-              : 'No agreements found for this wallet.'
-            : 'Connect your wallet to view history.'}
-        </p>
-      )}
-    </div>
+        {error && <div className="notice error">{error}</div>}
+        {historyNotice && <div className="notice">{historyNotice}</div>}
+        {loading ? (
+          <div className="empty-state" role="status"><Icon name="arrows" size={28} /><p>Reading your on-chain history...</p></div>
+        ) : filteredHistory.length ? (
+          <div className="table-scroll" tabIndex={0} role="region" aria-label="Agreement transactions">
+            <table className="data-table">
+              <thead><tr><th scope="col">Agreement</th><th scope="col">Latest activity</th><th scope="col">Total escrow</th><th scope="col">Remaining</th><th scope="col">Status</th><th scope="col">Updated</th></tr></thead>
+              <tbody>
+                {filteredHistory.map((agreement) => (
+                  <tr key={agreement.id}>
+                    <td><Link className="table-agreement" to={`/agreement/${agreement.id}`}><span className="asset-icon"><Icon name="box" size={17} /></span><span><strong>{agreement.title}</strong><small>Agreement #{agreement.id}</small></span></Link></td>
+                    <td className="table-activity">{agreement.latestEvent ? agreement.latestEvent.name.replace(/([A-Z])/g, ' $1').trim() : 'Agreement created'}<small>{agreement.eventCount} event{agreement.eventCount === 1 ? '' : 's'}</small></td>
+                    <td className="table-amount">{agreement.totalEth} ETH</td>
+                    <td className="table-date">{agreement.remainingEth} ETH</td>
+                    <td><span className={`badge status-${agreement.statusLabel.toLowerCase().replaceAll(' ', '-')}`}>{agreement.statusLabel}</span></td>
+                    <td className="table-date"><time dateTime={new Date(agreement.latestTimestamp * 1000).toISOString()} title={new Date(agreement.latestTimestamp * 1000).toLocaleString()}>{new Date(agreement.latestTimestamp * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' })}</time></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <Icon name={agreementHistory.length ? 'search' : 'arrows'} size={32} />
+            <h3>{agreementHistory.length ? 'No matching transactions' : 'Your story starts with an agreement'}</h3>
+            <p>{agreementHistory.length ? 'Try a different status or search term.' : isArbitrator ? 'No disputed or resolved agreements found.' : 'Once you participate in a shipment, its agreement and payment history will appear here.'}</p>
+            {agreementHistory.length > 0 && <button className="btn btn-secondary" onClick={() => { setQuery(''); setStatusFilter('all'); }} type="button">Clear filters</button>}
+          </div>
+        )}
+        <div className="table-footer"><span>{filteredHistory.length} of {agreementHistory.length} agreement{agreementHistory.length === 1 ? '' : 's'}</span><span><Icon name="shield" size={13} />Sourced from the blockchain</span></div>
+      </div>
+    </section>
   );
 }
-
 export default History;

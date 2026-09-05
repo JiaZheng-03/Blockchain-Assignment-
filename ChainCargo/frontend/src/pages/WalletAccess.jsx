@@ -68,7 +68,7 @@ function WalletAccess() {
 
   return (
     <div className="auth-shell">
-      <main className="form-card auth-card wallet-login-card">
+      <section className="form-card auth-card wallet-login-card" aria-label="Wallet access">
         <div className="auth-card-header">
           <button className="btn btn-secondary auth-back-button" disabled={isConnecting} onClick={backToHome} type="button">
             ← Back to Home
@@ -134,7 +134,7 @@ function WalletAccess() {
             </div>
           </>
         )}
-      </main>
+      </section>
     </div>
   );
 }

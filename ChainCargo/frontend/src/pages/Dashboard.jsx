@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AgreementCard from '../components/AgreementCard';
+import Icon from '../components/Icon';
 import DashboardInsights from '../components/DashboardInsights';
 import { useWallet } from '../context/WalletContext';
 import { useContract } from '../context/ContractContext';
@@ -39,10 +40,10 @@ function Dashboard() {
   const { displayBalance, error: balanceError } = useWalletBalance();
 
   const stats = [
-    { title: 'Account', value: profile?.name || (account ? formatAddress(account) : 'Not connected') },
-    { title: 'Network', value: networkName },
-    { title: 'Sepolia Balance', value: displayBalance },
-    { title: 'On-chain Role', value: roleLabel },
+    { title: 'Connected account', value: profile?.name || (account ? formatAddress(account) : 'Not connected'), icon: 'user' },
+    { title: 'Network', value: networkName, icon: 'globe' },
+    { title: 'Wallet balance', value: displayBalance, icon: 'wallet' },
+    { title: 'Your role', value: roleLabel, icon: 'shield' },
   ];
   const activeAgreements = agreements.filter((agreement) => agreement.status === 0).length;
   const attentionAgreements = isArbitrator
@@ -77,12 +78,20 @@ function Dashboard() {
 
 
   return (
-    <section>
+    <section className="dashboard-page">
+      <div className="page-heading">
+        <div><h1>{isArbitrator ? 'Arbitration workspace' : 'Dashboard'}</h1><p>{isArbitrator ? 'Review the evidence. Help every shipment reach a fair resolution.' : 'Your shipments, payments, and next steps. All in one place.'}</p></div>
+        <div className="page-heading-actions">
+          <Link className="btn btn-secondary" to="/history"><Icon name="arrows" size={16} />Transactions</Link>
+          {isShipper && <Link className="btn btn-primary" to="/create-agreement"><Icon name="plus" size={16} />New agreement</Link>}
+        </div>
+      </div>
       <div className="stat-grid">
         {stats.map((stat) => (
           <div className="stat-box" key={stat.title}>
-            <h3>{stat.value}</h3>
+            <Icon name={stat.icon} size={16} className="stat-icon" />
             <p>{stat.title}</p>
+            <h3>{stat.value}</h3>
           </div>
         ))}
       </div>
@@ -230,6 +239,7 @@ function Dashboard() {
           </div>
         ) : isConnected && agreements.length ? (
           <div className="empty-state filtered-empty-state">
+            <Icon name="search" size={30} />
             <p>No agreements match the current search and filters.</p>
             <button className="btn btn-secondary" type="button" onClick={clearAgreementFilters}>
               Clear filters
@@ -237,6 +247,8 @@ function Dashboard() {
           </div>
         ) : (
           <div className="empty-state">
+            <Icon name={isArbitrator ? 'shield' : 'box'} size={32} />
+            <h3>{isArbitrator ? 'No cases to review' : 'A new journey starts here'}</h3>
             <p>
               {isConnected
                 ? isArbitrator
