@@ -40,10 +40,11 @@ function Register() {
   const deploymentUnavailable = ['missing', 'outdated', 'unreachable'].includes(deploymentStatus);
 
   useEffect(() => {
-    setRole(requestedRole === '3' && !isDesignatedArbitrator ? '1' : requestedRole);
+    setRole(isDesignatedArbitrator ? '3' : requestedRole === '3' ? '1' : requestedRole);
   }, [isDesignatedArbitrator, requestedRole]);
 
   const chooseRole = (nextRole) => {
+    if (isDesignatedArbitrator && nextRole !== '3') return;
     setRole(nextRole);
     setSearchParams({
       role: nextRole === '1' ? 'shipper' : nextRole === '2' ? 'carrier' : 'arbitrator',
@@ -76,8 +77,9 @@ function Register() {
       setError('');
       setSuccess('');
       const contract = await getWriteContract();
-      await waitForTransaction(await contract.register(name.trim(), Number(role)));
-      const roleLabel = role === '1' ? 'Shipper' : role === '2' ? 'Carrier' : 'Arbitrator';
+      const registrationRole = isDesignatedArbitrator ? 3 : Number(role);
+      await waitForTransaction(await contract.register(name.trim(), registrationRole));
+      const roleLabel = registrationRole === 1 ? 'Shipper' : registrationRole === 2 ? 'Carrier' : 'Arbitrator';
       setSuccess(`Registration confirmed. This wallet is now an ${roleLabel}.`);
     } catch (registerError) {
       setError(friendlyContractError(registerError));
@@ -92,13 +94,13 @@ function Register() {
       <div className="form-card auth-card setup-card">
         <div className="auth-card-header">
           <Link className="btn btn-secondary auth-back-button" to="/setup">← Back to setup</Link>
-          <Link className="brand dark" to="/"><img src="/favicon.svg" alt="" width="30" height="30" aria-hidden="true" />CargoSeal</Link>
+          <Link className="brand dark" to="/"><img src="/favicon.svg" alt="" width="30" height="30" aria-hidden="true" />ChainCargo</Link>
         </div>
         <span className="eyebrow">{isRegistered ? 'Account setup complete' : 'Step 1 of your account setup'}</span>
         <h2>{isRegistered ? 'Your wallet is ready' : 'Register a wallet role'}</h2>
         <p>
           {isRegistered
-            ? 'Your account is registered on Sepolia and ready to use in CargoSeal.'
+            ? 'Your account is registered on Sepolia and ready to use in ChainCargo.'
             : 'Each MetaMask account has one permanent role in the Sepolia deployment.'}
         </p>
 
@@ -150,7 +152,7 @@ function Register() {
               <span className="registration-check" aria-hidden="true">&#10003;</span>
               <div>
                 <strong>Registration complete</strong>
-                <p>Your permanent CargoSeal role has been confirmed on-chain.</p>
+                <p>Your permanent ChainCargo role has been confirmed on-chain.</p>
               </div>
             </div>
 
@@ -178,6 +180,8 @@ function Register() {
             <div>
               <strong>Choose this wallet’s role</strong>
               <div className="role-grid selectable">
+                {!isDesignatedArbitrator && (
+                  <>
                 <button className={`role-card ${role === '1' ? 'selected' : ''}`} type="button" onClick={() => chooseRole('1')}>
                   <span className="role-icon">S</span>
                   <strong>Shipper</strong>
@@ -188,18 +192,20 @@ function Register() {
                   <strong>Carrier</strong>
                   <small>Completes milestones and receives ETH.</small>
                 </button>
+                  </>
+                )}
                 {isDesignatedArbitrator && (
                   <button className={`role-card ${role === '3' ? 'selected' : ''}`} type="button" onClick={() => chooseRole('3')}>
                     <span className="role-icon">A</span>
                     <strong>Arbitrator</strong>
-                    <small>Resolves disputed escrow as the contract deployer.</small>
+                    <small>The contract deployer can only register as the Arbitrator.</small>
                   </button>
                 )}
               </div>
             </div>
             <label>
               Business / Display Name
-              <input value={name} onChange={(event) => setName(event.target.value)} required placeholder={role === '1' ? 'Acme Imports' : role === '2' ? 'Swift Freight' : 'CargoSeal Arbitration'} />
+              <input value={name} onChange={(event) => setName(event.target.value)} required placeholder={role === '1' ? 'Acme Imports' : role === '2' ? 'Swift Freight' : 'ChainCargo Arbitration'} />
             </label>
             {isConnected && (
               <button className="text-button" type="button" onClick={switchWallet} disabled={isConnecting}>

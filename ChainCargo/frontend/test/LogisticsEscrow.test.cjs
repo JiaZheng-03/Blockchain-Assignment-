@@ -9,7 +9,7 @@ describe("LogisticsEscrow", function () {
     const escrow = await Escrow.deploy();
     await escrow.waitForDeployment();
 
-    await escrow.connect(arbitrator).register("CargoSeal Arbitration", 3);
+    await escrow.connect(arbitrator).register("ChainCargo Arbitration", 3);
     await escrow.connect(shipper).register("Acme Imports", 1);
     await escrow.connect(carrier).register("Swift Freight", 2);
     await escrow.connect(secondShipper).register("Second Shipper", 1);
@@ -281,6 +281,25 @@ describe("LogisticsEscrow", function () {
     await expect(escrow.connect(carrier).submitEvidence(0, 0, replacementHash))
       .to.emit(escrow, "MilestoneProofSubmitted")
       .withArgs(0, 0, replacementHash, "");
+  });
+
+  it("only allows the contract deployer to register as Arbitrator", async function () {
+    const [deployer, other] = await ethers.getSigners();
+    const Escrow = await ethers.getContractFactory("LogisticsEscrow");
+
+    for (const participantRole of [1, 2]) {
+      const escrow = await Escrow.connect(deployer).deploy();
+      await escrow.waitForDeployment();
+      await expect(escrow.connect(deployer).register("Developer", participantRole))
+        .to.be.revertedWithCustomError(escrow, "InvalidRole");
+    }
+
+    const escrow = await Escrow.connect(deployer).deploy();
+    await escrow.waitForDeployment();
+    await expect(escrow.connect(other).register("Fake Arbitrator", 3))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(deployer).register("ChainCargo Arbitration", 3))
+      .to.emit(escrow, "UserRegistered").withArgs(deployer.address, 3, "ChainCargo Arbitration");
   });
 
   it("lets only the Carrier request arbitration after one hour without Shipper action", async function () {

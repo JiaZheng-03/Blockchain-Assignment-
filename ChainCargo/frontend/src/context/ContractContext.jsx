@@ -17,7 +17,7 @@ export { friendlyContractError } from '../utils/contractErrors';
 
 const ContractContext = createContext(null);
 const DEFAULT_CHAIN_ID = SEPOLIA_NETWORK.chainId;
-const REQUIRED_CONTRACT_VERSION = 12;
+const REQUIRED_CONTRACT_VERSION = 13;
 
 export function ContractProvider({ children }) {
   const { account, chainId, isConnected } = useWallet();

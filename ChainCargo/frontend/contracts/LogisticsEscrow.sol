@@ -118,7 +118,7 @@ contract LogisticsEscrow {
     error NoActiveDispute();
 
     address public immutable arbitrator;
-    uint256 public constant CONTRACT_VERSION = 12;
+    uint256 public constant CONTRACT_VERSION = 13;
     string public constant EVIDENCE_URI_SCHEME = "supabase://";
     uint256 public constant MAX_MILESTONES = 2;
     uint256 public constant REPUTATION_POINTS_PER_MILESTONE = 10;
@@ -272,8 +272,10 @@ contract LogisticsEscrow {
         if (profiles[msg.sender].role != Role.None) revert AlreadyRegistered();
         if (bytes(name).length == 0) revert InvalidInput();
         _requireMaximumLength(name, MAX_PROFILE_NAME_LENGTH);
-        if (role == Role.Arbitrator) {
-            if (msg.sender != arbitrator) revert Unauthorized();
+        if (msg.sender == arbitrator) {
+            if (role != Role.Arbitrator) revert InvalidRole();
+        } else if (role == Role.Arbitrator) {
+            revert Unauthorized();
         } else if (role != Role.Shipper && role != Role.Carrier) {
             revert InvalidRole();
         }
