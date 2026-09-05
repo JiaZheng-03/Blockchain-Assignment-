@@ -63,7 +63,7 @@ function AppLayout() {
         <main className="main-content" id="main-content" tabIndex={-1}>
           <Outlet />
         </main>
-        <footer className="workspace-footer"><span>ChainCargo <span className="footer-dot">·</span> Built on trust. Verified on-chain.</span><span>Ethereum logistics workspace</span></footer>
+        <footer className="workspace-footer"><span>CargoSeal <span className="footer-dot">·</span> Built on trust. Verified on-chain.</span><span>Ethereum logistics workspace</span></footer>
       </div>
     </div>
   );

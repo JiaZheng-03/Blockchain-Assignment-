@@ -22,7 +22,7 @@ function WalletGate() {
       <div className="panel access-panel">
         <span className="eyebrow">Wallet required</span>
         <h2>Connect MetaMask to continue</h2>
-        <p>Your wallet address is your ChainCargo login and identifies your on-chain role.</p>
+        <p>Your wallet address is your CargoSeal login and identifies your on-chain role.</p>
         <Link className="btn btn-primary" to="/login">Open wallet access</Link>
       </div>
     );
@@ -44,7 +44,7 @@ function WalletGate() {
       <div className="panel access-panel">
         <span className="eyebrow">Network required</span>
         <h2>Switch MetaMask to {expectedNetworkName}</h2>
-        <p>The configured ChainCargo contract runs on chain {expectedChainId}.</p>
+        <p>The configured CargoSeal contract runs on chain {expectedChainId}.</p>
         <button className="btn btn-primary" onClick={switchToExpectedNetwork} type="button">
           Switch network
         </button>
@@ -60,7 +60,7 @@ function WalletGate() {
     return (
       <div className="panel access-panel">
         <span className="eyebrow">Contract deployment required</span>
-        <h2>Deploy ChainCargo to {expectedNetworkName} first</h2>
+        <h2>Deploy CargoSeal to {expectedNetworkName} first</h2>
         <p>The configured address does not contain the current escrow contract.</p>
         <Link className="btn btn-primary" to="/setup">Open setup checklist</Link>
       </div>

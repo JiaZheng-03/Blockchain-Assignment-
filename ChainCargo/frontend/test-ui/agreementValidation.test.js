@@ -300,7 +300,7 @@ test('builds safe Supabase evidence links and wallet upload authorization messag
     nonce: '12345678-1234-1234-1234-123456789abc',
     timestamp: 123456789,
   });
-  assert.match(message, /ChainCargo evidence upload/);
+  assert.match(message, /CargoSeal evidence upload/);
   assert.match(message, /Agreement: 7/);
   assert.match(message, /File: receipt\.pdf/);
 });

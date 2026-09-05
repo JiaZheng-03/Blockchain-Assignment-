@@ -28,7 +28,7 @@ export default function Sidebar({ onClose }) {
       <div className="sidebar-brand-row">
         <Link to="/" className="brand sidebar-brand" onClick={onClose}>
           <span className="brand-mark"><img src="/favicon.svg" alt="" width="41" height="41" aria-hidden="true" /></span>
-          <span>ChainCargo<small>LOGISTICS, CONNECTED</small></span>
+          <span>CargoSeal<small>LOGISTICS, CONNECTED</small></span>
         </Link>
         <button className="icon-button mobile-nav-close" aria-label="Close navigation" onClick={onClose} type="button"><Icon name="close" /></button>
       </div>

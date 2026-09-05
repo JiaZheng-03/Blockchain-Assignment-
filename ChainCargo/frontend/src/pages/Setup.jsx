@@ -78,7 +78,7 @@ function Setup() {
       <div className="panel setup-intro">
         <span className="eyebrow">Blockchain dApp readiness</span>
         <h1>Connect MetaMask to {expectedNetworkName} in four clear steps</h1>
-        <p>Complete this checklist once to connect a registered wallet to ChainCargo.</p>
+        <p>Complete this checklist once to connect a registered wallet to CargoSeal.</p>
         {(walletError || deploymentError || actionError) && (
           <div className="notice error">{actionError || walletError || deploymentError}</div>
         )}

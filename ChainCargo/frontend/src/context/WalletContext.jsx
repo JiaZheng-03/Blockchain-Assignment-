@@ -170,7 +170,7 @@ export function WalletProvider({ children }) {
       setError('');
       const issuedAt = new Date().toISOString();
       const message = [
-        'Sign in to ChainCargo',
+        'Sign in to CargoSeal',
         '',
         `Wallet: ${account}`,
         `Chain ID: ${chainId}`,
@@ -311,7 +311,7 @@ export function WalletProvider({ children }) {
       if (disconnectError?.code !== 4001) {
         setError(
           disconnectError?.code === -32601 || disconnectError?.code === 4200
-            ? 'This wallet cannot disconnect automatically. Use MetaMask → Connected sites to disconnect ChainCargo.'
+            ? 'This wallet cannot disconnect automatically. Use MetaMask → Connected sites to disconnect CargoSeal.'
             : disconnectError.message || 'Failed to disconnect MetaMask.',
         );
       }
@@ -397,7 +397,7 @@ export function WalletProvider({ children }) {
 
     const initializeWallet = async () => {
       try {
-        // Previous site permissions do not count as a new ChainCargo login session.
+        // Previous site permissions do not count as a new CargoSeal login session.
         // Do not expose stale account cards until Connect MetaMask succeeds.
         setAuthorizedAccounts([]);
         connectionConfirmedRef.current = false;

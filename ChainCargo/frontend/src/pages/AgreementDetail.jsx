@@ -775,7 +775,7 @@ function AgreementDetail() {
                         <>
                           <code>{milestone.proofURI}</code>
                           <span className="notice error">
-                            This is not a valid ChainCargo Supabase reference. External evidence cannot be fetched or verified automatically.
+                            This is not a valid CargoSeal Supabase reference. External evidence cannot be fetched or verified automatically.
                           </span>
                         </>
                       ) : null}
@@ -1020,7 +1020,7 @@ function AgreementDetail() {
               </strong>
               <p>
                 {isFinalEvidenceConfirmation
-                  ? `${evidenceDecision.milestone.payoutEth} ETH will be released, the agreement will be completed, and no after-sales claim, evidence rejection, refund, or dispute will be available through ChainCargo.`
+                  ? `${evidenceDecision.milestone.payoutEth} ETH will be released, the agreement will be completed, and no after-sales claim, evidence rejection, refund, or dispute will be available through CargoSeal.`
                   : evidenceDecision.type === 'confirm'
                   ? `${evidenceDecision.milestone.payoutEth} ETH will be released for this milestone.`
                   : 'The current evidence will be cleared and the Carrier will receive up to 24 hours to submit replacement evidence. No escrow will be refunded by this action.'}

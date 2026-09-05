@@ -190,7 +190,7 @@ function NotificationButton() {
               ))}
             </div>
           )}
-          <small>Alerts update automatically while ChainCargo is open.</small>
+          <small>Alerts update automatically while CargoSeal is open.</small>
         </section>
       )}
     </div>

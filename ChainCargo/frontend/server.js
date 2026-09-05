@@ -346,5 +346,5 @@ app.use((request, response, next) => {
 
 app.listen(port, host, () => {
   const status = supabase ? 'configured' : 'missing or invalid Supabase settings';
-  console.log(`ChainCargo API listening at http://${host}:${port} (Supabase ${status})`);
+  console.log(`CargoSeal API listening at http://${host}:${port} (Supabase ${status})`);
 });

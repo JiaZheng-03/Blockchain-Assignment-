@@ -73,7 +73,7 @@ function WalletAccess() {
           <button className="btn btn-secondary auth-back-button" disabled={isConnecting} onClick={backToHome} type="button">
             ← Back to Home
           </button>
-          <Link className="brand dark" to="/"><img src="/favicon.svg" alt="" width="30" height="30" aria-hidden="true" />ChainCargo</Link>
+          <Link className="brand dark" to="/"><img src="/favicon.svg" alt="" width="30" height="30" aria-hidden="true" />CargoSeal</Link>
         </div>
         <span className="eyebrow">Wallet access</span>
         <h2>
@@ -88,7 +88,7 @@ function WalletAccess() {
             ? 'Complete the connection request in the MetaMask window.'
             : authorizedAccounts.length
               ? 'Review every authorized account and select the one you want to login with.'
-              : 'Select one or more MetaMask accounts to use with ChainCargo.'}
+              : 'Select one or more MetaMask accounts to use with CargoSeal.'}
         </p>
         {error && <div className="notice error">{error}</div>}
 

@@ -41,7 +41,6 @@ function CreateAgreement() {
     isConnected,
     isConnecting,
     connectWallet,
-    formatAddress,
     switchWallet,
   } = useWallet();
   const {
@@ -69,6 +68,8 @@ function CreateAgreement() {
   const [registeredCarriers, setRegisteredCarriers] = useState([]);
   const [carriersLoading, setCarriersLoading] = useState(false);
   const [carrierDirectoryError, setCarrierDirectoryError] = useState('');
+  const [carrierSearchOpen, setCarrierSearchOpen] = useState(false);
+  const [carrierTouched, setCarrierTouched] = useState(false);
   const [minimumDateTime, setMinimumDateTime] = useState('');
   const [minimumMilestoneDateTime, setMinimumMilestoneDateTime] = useState('');
   const [step, setStep] = useState(1);
@@ -124,11 +125,6 @@ function CreateAgreement() {
         );
         if (!cancelled) {
           setRegisteredCarriers(entries);
-          setForm((current) => (
-            !current.carrier && entries.length === 1
-              ? { ...current, carrier: entries[0].address }
-              : current
-          ));
         }
       } catch (loadError) {
         if (!cancelled) setCarrierDirectoryError(friendlyContractError(loadError));
@@ -146,6 +142,7 @@ function CreateAgreement() {
   const updateForm = (event) => {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
+    if (name === 'carrier') setError('');
     if (name === 'deadline' && value) {
       const deadlineMs = new Date(value).getTime();
       const invalidCount = milestones.filter(
@@ -227,7 +224,14 @@ function CreateAgreement() {
       setError('');
       validateAgreementBasics({ form, account });
       const contract = await getReadContract();
-      if (!await contract.isAgreementNameAvailable(account, form.title)) {
+      const [carrierProfile, nameAvailable] = await Promise.all([
+        contract.getProfile(form.carrier.trim()),
+        contract.isAgreementNameAvailable(account, form.title),
+      ]);
+      if (Number(carrierProfile.role) !== 2) {
+        throw new Error('The carrier wallet must register as a Carrier before you create the agreement.');
+      }
+      if (!nameAvailable) {
         throw new Error('You already created an agreement with this name. Choose a different agreement name.');
       }
       moveToStep(2);
@@ -356,8 +360,22 @@ function CreateAgreement() {
   }
 
   const selectedCarrier = registeredCarriers.find(
-    (carrier) => carrier.address.toLowerCase() === form.carrier.toLowerCase(),
+    (carrier) => carrier.address.toLowerCase() === form.carrier.trim().toLowerCase(),
   );
+  const carrierQuery = form.carrier.trim().toLowerCase();
+  const matchingCarriers = carrierQuery
+    ? registeredCarriers.filter((carrier) => (
+      carrier.name.toLowerCase().includes(carrierQuery)
+      || carrier.address.toLowerCase().includes(carrierQuery)
+    )).slice(0, 8)
+    : [];
+  const carrierInputMessage = !form.carrier.trim()
+    ? 'Type a Carrier name or wallet address to search.'
+    : selectedCarrier
+      ? `Registered Carrier: ${selectedCarrier.name}`
+      : matchingCarriers.length
+        ? 'Choose the matching registered Carrier below.'
+        : 'No registered Carrier matches this input.';
   const errorTarget = getErrorTarget(error);
 
   return (
@@ -398,30 +416,69 @@ function CreateAgreement() {
               <small>This unique name is generated automatically from the creation time and Shipper wallet.</small>
               {errorTarget === 'title' && <small className="field-error">{error}</small>}
             </label>
-            <label>
-              Registered Carrier
-              <select
-                disabled={carriersLoading || !registeredCarriers.length}
-                name="carrier"
-                onChange={updateForm}
-                required
-                value={form.carrier}
-                aria-invalid={errorTarget === 'carrier'}
+            <div className="carrier-field">
+              <label htmlFor="carrier-search-input">Registered Carrier</label>
+              <div
+                className="carrier-search"
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) {
+                    setCarrierSearchOpen(false);
+                    setCarrierTouched(true);
+                  }
+                }}
               >
-                <option value="">
-                  {carriersLoading ? 'Loading registered carriers…' : 'Select a Carrier wallet'}
-                </option>
-                {registeredCarriers.map((carrier) => (
-                  <option key={carrier.address} value={carrier.address}>
-                    {carrier.name} · {formatAddress(carrier.address)} · {carrier.reputation === null ? 'score unavailable' : `${carrier.reputation.toString()} pts`}
-                  </option>
-                ))}
-              </select>
-              <small>
-                Only wallets registered on-chain as Carrier are listed. Found {registeredCarriers.length}.
+                <input
+                  aria-autocomplete="list"
+                  aria-controls="carrier-suggestions"
+                  aria-expanded={carrierSearchOpen && Boolean(carrierQuery)}
+                  aria-invalid={errorTarget === 'carrier' || (carrierTouched && !selectedCarrier)}
+                  autoComplete="off"
+                  disabled={carriersLoading || !registeredCarriers.length}
+                  id="carrier-search-input"
+                  name="carrier"
+                  onChange={(event) => {
+                    updateForm(event);
+                    setCarrierSearchOpen(true);
+                    setCarrierTouched(false);
+                  }}
+                  onFocus={() => setCarrierSearchOpen(true)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') setCarrierSearchOpen(false);
+                  }}
+                  placeholder={carriersLoading ? 'Loading registered Carriers…' : 'Search by Carrier name or wallet address'}
+                  required
+                  role="combobox"
+                  spellCheck="false"
+                  value={form.carrier}
+                />
+                {carrierSearchOpen && carrierQuery && (
+                  <div className="carrier-suggestions" id="carrier-suggestions" role="listbox" aria-label="Registered Carrier suggestions">
+                    {matchingCarriers.length ? matchingCarriers.map((carrier) => (
+                      <button
+                        aria-selected={selectedCarrier?.address === carrier.address}
+                        key={carrier.address}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          setForm((current) => ({ ...current, carrier: carrier.address }));
+                          setError('');
+                          setCarrierSearchOpen(false);
+                          setCarrierTouched(true);
+                        }}
+                        role="option"
+                        type="button"
+                      >
+                        <span><strong>{carrier.name}</strong><code>{carrier.address}</code></span>
+                        <small>{carrier.reputation === null ? 'Score unavailable' : `${carrier.reputation.toString()} pts · ${carrier.reputationTier}`}</small>
+                      </button>
+                    )) : <p className="carrier-search-empty">No registered Carrier found.</p>}
+                  </div>
+                )}
+              </div>
+              <small className={carrierTouched && !selectedCarrier ? 'field-error' : ''}>
+                {carrierInputMessage} {registeredCarriers.length} registered Carrier{registeredCarriers.length === 1 ? '' : 's'} available.
               </small>
               {errorTarget === 'carrier' && <small className="field-error">{error}</small>}
-            </label>
+            </div>
             {selectedCarrier && (
               <div className="carrier-reputation-preview">
                 <span className="reputation-mark">★</span>

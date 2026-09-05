@@ -1,6 +1,6 @@
-# ChainCargo
+# CargoSeal
 
-ChainCargo is a full-stack Ethereum dApp for milestone-based logistics agreements. A Shipper funds an escrow in Ether, a Carrier commits cryptographic evidence for two fixed checkpoints, and Shipper-confirmed milestones release payment. Missed deadlines enable deterministic refunds, while disputed escrow can be split by the contract arbitrator.
+CargoSeal is a full-stack Ethereum dApp for milestone-based logistics agreements. A Shipper funds an escrow in Ether, a Carrier commits cryptographic evidence for two fixed checkpoints, and Shipper-confirmed milestones release payment. Missed deadlines enable deterministic refunds, while disputed escrow can be split by the contract arbitrator.
 
 ## Assignment requirements covered
 
@@ -15,7 +15,7 @@ ChainCargo is a full-stack Ethereum dApp for milestone-based logistics agreement
 | Transaction history | Dashboard lists wallet agreements and History reconstructs chronological activity from contract events |
 | Smart-contract UI integration | React, ethers v6, MetaMask, live contract reads/writes, transaction confirmations, and error reporting |
 
-> Ethereum contracts cannot execute themselves at a wall-clock time. ChainCargo automatically detects refund eligibility and notifies the Shipper, but the Shipper must submit the refund transaction in MetaMask.
+> Ethereum contracts cannot execute themselves at a wall-clock time. CargoSeal automatically detects refund eligibility and notifies the Shipper, but the Shipper must submit the refund transaction in MetaMask.
 
 ## Technology
 
@@ -75,7 +75,7 @@ Open the Vite URL, then open **Setup**. The page checks MetaMask, Sepolia, deplo
 
 ## MetaMask configuration
 
-ChainCargo asks MetaMask to switch to Sepolia from the **Setup** page:
+CargoSeal asks MetaMask to switch to Sepolia from the **Setup** page:
 
 - Network name: `Sepolia`
 - Chain ID: `11155111`
@@ -98,7 +98,7 @@ The Dashboard and Profile read the balance of the currently selected MetaMask ac
 
 The account that deploys the contract is the Arbitrator. It resolves a dispute requested by either participant or a Carrier escalation opened after the one-hour evidence review period.
 
-If MetaMask remains on the same wallet, click **Switch account** in ChainCargo. Authorize both development accounts once, then the app's role-labelled account picker can switch the active workflow without guessing.
+If MetaMask remains on the same wallet, click **Switch account** in CargoSeal. Authorize both development accounts once, then the app's role-labelled account picker can switch the active workflow without guessing.
 
 ## Commands
 
@@ -155,7 +155,7 @@ The contract is suitable for coursework and local/test-network demonstrations. A
 
 ## Frontend agreement notifications
 
-After MetaMask connection and signed login on the configured chain, ChainCargo scans contract logs from the deployment block and checks again every 30 seconds. The scan also refreshes after local transactions. No contract changes, notification backend, or browser notification permission are required. Existing browser deadline alerts and action-result/confirmation dialogs remain available.
+After MetaMask connection and signed login on the configured chain, CargoSeal scans contract logs from the deployment block and checks again every 30 seconds. The scan also refreshes after local transactions. No contract changes, notification backend, or browser notification permission are required. Existing browser deadline alerts and action-result/confirmation dialogs remain available.
 
 Received updates use one dialog with Previous, Next, Mark as Read, Close, and View Agreement. Previous/Next only navigate. Mark as Read advances to the next unread update (wrapping to the first if needed). Mark All as Read appears when multiple unread updates exist and includes dismissed updates in the bell. View Agreement marks its update read before navigating, then dismisses the remaining popup queue. Close and Escape dismiss the queue without marking anything read for the current login session. Unread updates can appear again after reloading or signing in again; read status persists across reloads. Read updates remain in the bell as history, but only unread received updates count in its badge. Existing deadline alerts remain listed separately. The dialog waits for existing action-result or confirmation popups to close.
 

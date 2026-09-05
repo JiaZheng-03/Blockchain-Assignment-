@@ -62,7 +62,7 @@ export function createUploadAuthorizationMessage({
   timestamp,
 }) {
   return [
-    'ChainCargo evidence upload',
+    'CargoSeal evidence upload',
     `Contract: ${contractAddress}`,
     `Agreement: ${agreementId}`,
     `Milestone: ${milestoneIndex}`,
@@ -231,7 +231,7 @@ export async function uploadEvidenceToSupabase({
 export async function verifyEvidenceFromStorage({ expectedHash, evidenceUrl }) {
   if (!evidenceUrl) {
     throw new Error(
-      'This evidence is not a valid ChainCargo Supabase reference and cannot be verified automatically.',
+      'This evidence is not a valid CargoSeal Supabase reference and cannot be verified automatically.',
     );
   }
   const response = await fetch(evidenceUrl, { cache: 'no-store' });

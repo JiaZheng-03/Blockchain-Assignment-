@@ -92,13 +92,13 @@ function Register() {
       <div className="form-card auth-card setup-card">
         <div className="auth-card-header">
           <Link className="btn btn-secondary auth-back-button" to="/setup">← Back to setup</Link>
-          <Link className="brand dark" to="/"><img src="/favicon.svg" alt="" width="30" height="30" aria-hidden="true" />ChainCargo</Link>
+          <Link className="brand dark" to="/"><img src="/favicon.svg" alt="" width="30" height="30" aria-hidden="true" />CargoSeal</Link>
         </div>
         <span className="eyebrow">{isRegistered ? 'Account setup complete' : 'Step 1 of your account setup'}</span>
         <h2>{isRegistered ? 'Your wallet is ready' : 'Register a wallet role'}</h2>
         <p>
           {isRegistered
-            ? 'Your account is registered on Sepolia and ready to use in ChainCargo.'
+            ? 'Your account is registered on Sepolia and ready to use in CargoSeal.'
             : 'Each MetaMask account has one permanent role in the Sepolia deployment.'}
         </p>
 
@@ -150,7 +150,7 @@ function Register() {
               <span className="registration-check" aria-hidden="true">&#10003;</span>
               <div>
                 <strong>Registration complete</strong>
-                <p>Your permanent ChainCargo role has been confirmed on-chain.</p>
+                <p>Your permanent CargoSeal role has been confirmed on-chain.</p>
               </div>
             </div>
 
@@ -199,7 +199,7 @@ function Register() {
             </div>
             <label>
               Business / Display Name
-              <input value={name} onChange={(event) => setName(event.target.value)} required placeholder={role === '1' ? 'Acme Imports' : role === '2' ? 'Swift Freight' : 'ChainCargo Arbitration'} />
+              <input value={name} onChange={(event) => setName(event.target.value)} required placeholder={role === '1' ? 'Acme Imports' : role === '2' ? 'Swift Freight' : 'CargoSeal Arbitration'} />
             </label>
             {isConnected && (
               <button className="text-button" type="button" onClick={switchWallet} disabled={isConnecting}>

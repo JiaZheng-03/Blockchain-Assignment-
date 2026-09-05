@@ -68,7 +68,7 @@ function AccountPermissionDialog() {
         <section className="account-dialog" role="dialog" aria-modal="true" aria-labelledby="switch-dialog-title">
           <span className="eyebrow">Authorized MetaMask accounts</span>
           <h2 id="switch-dialog-title">Choose the exact wallet role</h2>
-          <p>ChainCargo will never guess which account you mean. Select the registered address you want to use.</p>
+          <p>CargoSeal will never guess which account you mean. Select the registered address you want to use.</p>
           {profilesLoading && <div className="notice">Checking on-chain roles for each address…</div>}
           <div className="account-choice-list">
             {authorizedAccounts.map((address) => {
@@ -121,7 +121,7 @@ function AccountPermissionDialog() {
         <h2 id="account-dialog-title">
           {accountPermissionMode === 'manage' ? 'Manage linked accounts' : 'Authorize your second testing account'}
         </h2>
-        <p>You are already connected. MetaMask will use the phrase “Connect this website” because ChainCargo is updating which addresses this site may access.</p>
+        <p>You are already connected. MetaMask will use the phrase “Connect this website” because CargoSeal is updating which addresses this site may access.</p>
         <ol className="dialog-steps">
           <li>Click <strong>Continue to MetaMask</strong> below.</li>
           <li>In MetaMask, click <strong>Edit accounts</strong>.</li>

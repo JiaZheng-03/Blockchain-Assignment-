@@ -1,8 +1,8 @@
-# ChainCargo Copilot Instructions
+# CargoSeal Copilot Instructions
 
 ## Current architecture
 
-ChainCargo is a university logistics escrow dApp. Preserve the current stack and extend it in place:
+CargoSeal is a university logistics escrow dApp. Preserve the current stack and extend it in place:
 
 - Solidity 0.8.24 and Hardhat
 - React, Vite, JavaScript, and React Router
