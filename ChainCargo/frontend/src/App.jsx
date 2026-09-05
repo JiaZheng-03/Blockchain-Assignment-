@@ -12,12 +12,14 @@ import History from './pages/History';
 import Profile from './pages/Profile';
 import AccountPermissionDialog from './components/AccountPermissionDialog';
 import NoticeToasts from './components/NoticeToasts';
+import AgreementRejectionNotice from './components/AgreementRejectionNotice';
 import './App.css';
 
 function AppLayout() {
   return (
     <div className="app-shell">
       <Navbar />
+      <AgreementRejectionNotice />
       <div className="app-content">
         <main className="main-content">
           <Outlet />

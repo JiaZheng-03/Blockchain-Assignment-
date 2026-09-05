@@ -16,6 +16,12 @@ function AgreementCard({
   return (
     <article className={`card agreement-card deadline-${deadlineState?.level || 'closed'}`}>
       {agreementId !== undefined && <span className="eyebrow">Agreement #{agreementId}</span>}
+      {status === 'Disputed' && (
+        <div className="dispute-card-alert">
+          <span className="dispute-status-mark" aria-hidden="true">!</span>
+          <span><strong>Dispute requested</strong><small>Awaiting Arbitrator action</small></span>
+        </div>
+      )}
       <h3>{title}</h3>
       <p>Total Amount: {amount}</p>
       {remaining && <p>Escrow Remaining: {remaining}</p>}

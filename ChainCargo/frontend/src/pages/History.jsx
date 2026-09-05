@@ -17,7 +17,7 @@ import {
 const eventDetails = {
   AgreementCreated: (args) => `${ethers.formatEther(args.amount)} ETH deposited into escrow`,
   AgreementAccepted: () => 'Carrier accepted the agreement and activated the milestone workflow',
-  AgreementRejected: (args) => `Carrier rejected the agreement; ${ethers.formatEther(args.refundAmount)} ETH returned to the Shipper`,
+  AgreementRejected: (args) => `Carrier rejected the agreement; ${ethers.formatEther(args.refundAmount)} ETH returned to the Shipper. Reason: ${args.reason}`,
   UnacceptedAgreementCancelled: (args) => `Carrier response period expired; ${ethers.formatEther(args.refundAmount)} ETH returned to the Shipper`,
   MilestoneProofSubmitted: (args) => `Evidence submitted for milestone ${Number(args.milestoneIndex) + 1}`,
   MilestoneConfirmed: (args) => `${ethers.formatEther(args.paymentAmount)} ETH released after Shipper confirmation for milestone ${Number(args.milestoneIndex) + 1}`,
@@ -27,6 +27,7 @@ const eventDetails = {
   Refunded: (args) => `${ethers.formatEther(args.amount)} ETH returned to the shipper`,
   DisputeOpened: (args) => `Dispute opened: ${args.reason}`,
   DisputeResolved: (args) => `Resolved: ${ethers.formatEther(args.shipperAmount)} ETH to shipper and ${ethers.formatEther(args.carrierAmount)} ETH to carrier`,
+  DisputeContinued: (args) => `Arbitrator ${args.evidenceApproved ? 'approved the evidence' : 'requested replacement evidence'} for milestone ${Number(args.milestoneIndex) + 1}; deadlines restored by ${Number(args.pausedSeconds)} seconds`,
 };
 
 function History() {

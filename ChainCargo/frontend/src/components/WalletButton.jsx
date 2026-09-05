@@ -5,6 +5,7 @@ function WalletButton() {
   const navigate = useNavigate();
   const {
     account,
+    connectWallet,
     disconnectWallet,
     isConnecting,
     isConnected,
@@ -12,15 +13,17 @@ function WalletButton() {
     formatAddress,
     error,
   } = useWallet();
-  const handleClick = () => {
+  const handleClick = async () => {
     if (typeof window === 'undefined' || !window.ethereum) {
       window.open('https://metamask.io/download/', '_blank', 'noopener,noreferrer');
       return;
     }
 
     if (isConnected && isAuthenticated) {
-      disconnectWallet();
+      await disconnectWallet();
+      navigate('/');
     } else {
+      if (!isConnected) await connectWallet();
       navigate('/login');
     }
   };
@@ -29,7 +32,7 @@ function WalletButton() {
     <div className="wallet-control">
       <button className="btn btn-secondary" onClick={handleClick} disabled={isConnecting} type="button">
         {isConnecting
-          ? 'Choose account in MetaMask…'
+          ? 'Waiting for MetaMask…'
           : isConnected && !isAuthenticated
               ? `Login with Wallet · ${formatAddress(account)}`
           : isConnected

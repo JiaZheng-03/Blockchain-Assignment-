@@ -11,7 +11,7 @@ ChainCargo is a full-stack Ethereum dApp for milestone-based logistics agreement
 | Funding | `createAgreement` is payable and enforces that the Shipper-selected milestone payouts equal the deposited escrow |
 | Milestones and payouts | Carrier uploads evidence to a shared Supabase Storage bucket and submits its `keccak256` file hash plus storage reference; the Shipper verifies it before confirmation atomically releases payment |
 | Carrier reputation | Every Shipper-confirmed milestone awards the assigned Carrier 10 immutable on-chain reputation points; proof submission, refunds, and dispute payouts award no points |
-| Refunds and disputes | Only the Shipper can refund an unsubmitted overdue milestone or open a dispute after the Final Delivery Deadline; the Carrier can escalate evidence after one hour without a Shipper response; the deployer/arbitrator resolves the remaining split |
+| Refunds and disputes | Only the Shipper can refund an unsubmitted overdue milestone; either agreement participant can request a dispute with details; the Carrier can also escalate evidence after one hour without a Shipper response; the deployer/arbitrator resolves the remaining split |
 | Transaction history | Dashboard lists wallet agreements and History reconstructs chronological activity from contract events |
 | Smart-contract UI integration | React, ethers v6, MetaMask, live contract reads/writes, transaction confirmations, and error reporting |
 
@@ -96,7 +96,7 @@ The Dashboard and Profile read the balance of the currently selected MetaMask ac
 8. If the Shipper does not act on submitted evidence for one hour, the Carrier may escalate it to the Arbitrator. If evidence was never submitted by its deadline, the Shipper may refund the remaining escrow.
 9. Open **History** to show the event timeline and transaction hashes.
 
-The account that deploys the contract is the Arbitrator. It resolves either a Shipper dispute opened after the Final Delivery Deadline or a Carrier escalation opened after the one-hour evidence review period.
+The account that deploys the contract is the Arbitrator. It resolves a dispute requested by either participant or a Carrier escalation opened after the one-hour evidence review period.
 
 If MetaMask remains on the same wallet, click **Switch account** in ChainCargo. Authorize both development accounts once, then the app's role-labelled account picker can switch the active workflow without guessing.
 
@@ -148,7 +148,7 @@ The `chain`, `deploy:local`, `seed:local`, `demo:local`, and `dev:local` command
 - The deposit must exactly equal all milestone payouts, preventing stranded or underfunded escrow.
 - Remaining escrow can be refunded only when the current required milestone is still unsubmitted after its deadline.
 - Only the original Shipper can submit that refund transaction.
-- Only the Shipper can open a normal dispute, and only after the Final Delivery Deadline.
+- Either the Shipper or assigned Carrier can request a dispute while the agreement is active, and the submitted reason is recorded in the event history for Arbitrator review.
 - The assigned Carrier can request Arbitrator action after submitted evidence has waited one hour without a Shipper decision.
 
 The contract is suitable for coursework and local/test-network demonstrations. A production deployment should additionally receive an independent security audit, decentralized oracle/e-signature policy, private evidence access controls, multisig arbitration, durable storage backups, and comprehensive operational monitoring.
