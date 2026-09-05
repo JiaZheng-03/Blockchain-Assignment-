@@ -48,7 +48,7 @@ function Dashboard() {
   const attentionAgreements = isArbitrator
     ? agreements.filter((agreement) => agreement.status === 3).length
     : agreements.filter(
-      (agreement) => agreement.status === 0 || agreement.status === 3,
+      (agreement) => agreement.status === 0 || agreement.status === 3 || agreement.status === 5,
     ).length;
   const visibleAgreements = useMemo(
     () => filterAndSortAgreements(agreements, {
@@ -190,9 +190,10 @@ function Dashboard() {
               const deadlineState = getDeadlineState(
                 actionDeadline,
                 nowSeconds,
-                agreement.status === 0,
+                agreement.status === 0 || agreement.status === 5,
               );
               const pendingMilestone = agreement.status === 0 && agreement.currentMilestoneState === 0;
+              const pendingAcceptance = agreement.status === 5;
               return (
                 <AgreementCard
                   key={agreement.id}
@@ -201,7 +202,9 @@ function Dashboard() {
                   amount={`${agreement.totalEth} ETH`}
                   remaining={`${agreement.remainingEth} ETH`}
                   deadline={new Date(actionDeadline * 1000).toLocaleString()}
-                  deadlineLabel={pendingMilestone ? 'Current milestone deadline' : 'Final deadline'}
+                  deadlineLabel={pendingAcceptance
+                    ? 'Carrier response deadline'
+                    : pendingMilestone ? 'Current milestone deadline' : 'Final deadline'}
                   deadlineState={deadlineState}
                   refundAvailable={isRefundAvailable(agreement, nowSeconds)}
                   status={agreement.statusLabel}
@@ -211,6 +214,8 @@ function Dashboard() {
                       ? agreement.status === 3
                         ? 'Resolve dispute'
                         : 'View resolution record'
+                      : agreement.status === 5
+                        ? isCarrier ? 'Review agreement request' : 'View acceptance status'
                       : agreement.status === 0
                       ? isShipper
                         ? 'Review / release payout'

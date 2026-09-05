@@ -52,6 +52,7 @@ async function main() {
       )
     ).wait();
     agreementId = 0;
+    await (await escrow.connect(carrier).acceptAgreement(agreementId)).wait();
   } else {
     agreementId -= 1;
   }

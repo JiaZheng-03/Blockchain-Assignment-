@@ -44,7 +44,7 @@ function NotificationButton() {
     .map((agreement) => {
       const reviewPending = agreement.currentMilestoneState === 1;
       const deadline = reviewPending
-        ? agreement.currentMilestoneSubmittedAt + (2 * 24 * 60 * 60)
+        ? agreement.currentMilestoneSubmittedAt + (60 * 60)
         : getAgreementActionDeadline(agreement);
       return {
         agreement,

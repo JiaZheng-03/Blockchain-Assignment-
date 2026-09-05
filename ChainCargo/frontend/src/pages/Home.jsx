@@ -31,11 +31,6 @@ function Home() {
           <Link className="btn btn-primary" to={primaryAction.to}>
             {primaryAction.label}
           </Link>
-          {primaryAction.to !== '/dashboard' && (
-            <Link className="btn btn-secondary" to="/setup">
-              View Setup Checklist
-            </Link>
-          )}
         </div>
       </div>
       <div className="panel">

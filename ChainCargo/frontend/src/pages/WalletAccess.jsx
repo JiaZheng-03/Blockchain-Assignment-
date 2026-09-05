@@ -78,14 +78,14 @@ function WalletAccess() {
         <span className="eyebrow">Wallet access</span>
         <h2>
           {isConnecting
-            ? 'Select accounts in MetaMask'
+            ? 'Connecting to MetaMask'
             : authorizedAccounts.length
               ? 'Choose an account'
               : 'Connect to MetaMask'}
         </h2>
         <p>
           {isConnecting
-            ? 'Finish choosing and confirming the accounts in the MetaMask window.'
+            ? 'Complete the connection request in the MetaMask window.'
             : authorizedAccounts.length
               ? 'Review every authorized account and select the one you want to login with.'
               : 'Select one or more MetaMask accounts to use with ChainCargo.'}
@@ -93,7 +93,7 @@ function WalletAccess() {
         {error && <div className="notice error">{error}</div>}
 
         {isConnecting ? (
-          <div className="notice">Waiting for MetaMask account selection…</div>
+          <div className="notice">Waiting for MetaMask connection confirmation…</div>
         ) : !authorizedAccounts.length ? (
           !hasMetaMask ? (
             <a className="btn btn-primary" href="https://metamask.io/download/" target="_blank" rel="noreferrer">Install MetaMask</a>

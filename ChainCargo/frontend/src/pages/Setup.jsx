@@ -78,10 +78,7 @@ function Setup() {
       <div className="panel setup-intro">
         <span className="eyebrow">Blockchain dApp readiness</span>
         <h1>Connect MetaMask to {expectedNetworkName} in four clear steps</h1>
-        <p>
-          Complete this checklist once, then test the full Shipper → Carrier → Shipper
-          milestone payout flow with two MetaMask accounts.
-        </p>
+        <p>Complete this checklist once to connect a registered wallet to ChainCargo.</p>
         {(walletError || deploymentError || actionError) && (
           <div className="notice error">{actionError || walletError || deploymentError}</div>
         )}
@@ -175,26 +172,14 @@ function Setup() {
               <p>
                 {isArbitrator
                   ? 'Open the dashboard to review disputed agreements.'
-                  : 'Open the dashboard, or authorize your second testing account.'}
+                  : 'Open the dashboard to continue.'}
               </p>
             </div>
             <div className="wizard-actions">
-              <button className="btn btn-secondary" onClick={switchWallet} type="button">Switch wallet</button>
               <Link className="btn btn-primary" to="/dashboard">Open dashboard</Link>
             </div>
           </div>
         )}
-      </div>
-
-      <div className="panel">
-        <span className="eyebrow">Assignment demo flow</span>
-        <h2>One agreement, two roles, three transaction stages</h2>
-        <div className="flow-grid">
-          <div><span>1</span><strong>Shipper</strong><p>Create terms, choose a registered Carrier, and deposit ETH.</p></div>
-          <div><span>2</span><strong>Carrier</strong><p>Open the assigned agreement and submit milestone evidence.</p></div>
-          <div><span>3</span><strong>Shipper</strong><p>Verify the evidence and release the exact milestone payout.</p></div>
-          <div><span>4</span><strong>Either party</strong><p>Review history, or test deadline refund and dispute resolution.</p></div>
-        </div>
       </div>
     </section>
   );

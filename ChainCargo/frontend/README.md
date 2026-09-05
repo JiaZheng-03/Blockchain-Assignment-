@@ -6,16 +6,16 @@ ChainCargo is a full-stack Ethereum dApp for milestone-based logistics agreement
 
 | Requirement | Implementation |
 | --- | --- |
-| Registration and authentication | MetaMask wallet authentication plus on-chain Shipper/Carrier registration |
-| Agreement creation | Per-Shipper unique name, Carrier, notes, fully funded escrow value, and deadlines for the two fixed milestones |
-| Funding | `createAgreement` is payable and enforces Cargo pickup at 30% and Final delivery at the remaining 70% |
+| Registration and authentication | MetaMask wallet authentication plus on-chain Shipper/Carrier registration; the deployer is the only eligible Arbitrator |
+| Agreement creation | Auto-generated per-Shipper name, Carrier, notes, fully funded escrow value, and deadlines for the two fixed milestones |
+| Funding | `createAgreement` is payable and enforces that the Shipper-selected milestone payouts equal the deposited escrow |
 | Milestones and payouts | Carrier uploads evidence to a shared Supabase Storage bucket and submits its `keccak256` file hash plus storage reference; the Shipper verifies it before confirmation atomically releases payment |
 | Carrier reputation | Every Shipper-confirmed milestone awards the assigned Carrier 10 immutable on-chain reputation points; proof submission, refunds, and dispute payouts award no points |
-| Refunds and disputes | Permissionless refund when the current milestone remains unsubmitted after its deadline; either party can pause escrow and open a dispute; deployer/arbitrator resolves the remaining split |
+| Refunds and disputes | Only the Shipper can refund an unsubmitted overdue milestone or open a dispute after the Final Delivery Deadline; the Carrier can escalate evidence after one hour without a Shipper response; the deployer/arbitrator resolves the remaining split |
 | Transaction history | Dashboard lists wallet agreements and History reconstructs chronological activity from contract events |
 | Smart-contract UI integration | React, ethers v6, MetaMask, live contract reads/writes, transaction confirmations, and error reporting |
 
-> Ethereum contracts cannot execute themselves at a wall-clock time. An eligible refund is therefore automatic in its outcome and permissionless to trigger: anyone can call `claimRefundAfterDeadline`, but the contract always sends the funds to the shipper.
+> Ethereum contracts cannot execute themselves at a wall-clock time. ChainCargo automatically detects refund eligibility and notifies the Shipper, but the Shipper must submit the refund transaction in MetaMask.
 
 ## Technology
 
@@ -88,13 +88,15 @@ The Dashboard and Profile read the balance of the currently selected MetaMask ac
 
 1. Open **Setup**, connect the first MetaMask account, switch to Sepolia, and register it as **Shipper**.
 2. Authorize a second MetaMask account and register it as **Carrier**.
-3. Switch back to the Shipper and open **Create Agreement**. Choose the Carrier, set chronological due dates for the fixed Cargo pickup (30%) and Final delivery (70%) milestones, and fund the escrow.
-4. Switch to the Carrier, open the agreement, select a receipt/photo/PDF, authorize its signed Supabase upload, then submit the returned storage reference and file hash on-chain.
-5. Switch to the Shipper, open and review the Supabase file, verify its bytes against the immutable hash, and confirm the milestone. The same transaction pays the Carrier and records 10 reputation points.
-6. Repeat for final delivery, or demonstrate a deadline refund with a short due date.
-7. Open **History** to show the event timeline and transaction hashes.
+3. Switch back to the Shipper and open **Create Agreement**. Choose the Carrier, select the milestone payment split, set chronological due dates, and fund the escrow.
+4. Switch to the Carrier and accept the agreement. Rejecting it closes the agreement and returns the full escrow to the Shipper.
+5. Upload evidence for either milestone to Supabase and submit its storage reference and file hash on-chain. The second milestone does not need to wait for the first payout.
+6. Switch to the Shipper, verify the stored file against the immutable hash, then confirm and pay or reject it so the Carrier can submit replacement evidence.
+7. During the final 24 hours before a current milestone deadline, the Carrier may request one 24-hour extension. The Shipper may approve it with 5% milestone compensation or reject it.
+8. If the Shipper does not act on submitted evidence for one hour, the Carrier may escalate it to the Arbitrator. If evidence was never submitted by its deadline, the Shipper may refund the remaining escrow.
+9. Open **History** to show the event timeline and transaction hashes.
 
-The account that deploys the contract is the arbitrator. If either participant opens a dispute, connect that deploying account to resolve how much remaining ETH goes to the shipper; the carrier receives the balance.
+The account that deploys the contract is the Arbitrator. It resolves either a Shipper dispute opened after the Final Delivery Deadline or a Carrier escalation opened after the one-hour evidence review period.
 
 If MetaMask remains on the same wallet, click **Switch account** in ChainCargo. Authorize both development accounts once, then the app's role-labelled account picker can switch the active workflow without guessing.
 
@@ -124,13 +126,13 @@ The `chain`, `deploy:local`, `seed:local`, `demo:local`, and `dev:local` command
 
 ## Date and deployment rules
 
-- Final and milestone dates must be at least two minutes in the future. This buffer prevents a date from expiring while MetaMask waits for confirmation.
+- The final deadline must be at least one hour in the future. Every milestone deadline must still be in the future when the agreement is created.
 - Milestone dates must be strictly chronological and cannot be later than the final deadline.
 - Evidence submitted on time remains eligible for Shipper confirmation after the wall-clock deadline; it cannot be bypassed with a refund.
 - The browser displays `datetime-local` values in the computer's local timezone; Solidity stores the equivalent Unix timestamp in UTC.
 - Sepolia data persists across browser and computer restarts.
-- Supabase evidence is public to anyone who knows its object URL, matching the old IPFS behavior; use dummy or encrypted files, never sensitive commercial records.
-- New evidence is stored as `supabase://project-ref/bucket/path`. Existing valid `ipfs://CID` evidence remains readable through a neutral public gateway.
+- Supabase evidence is public to anyone who knows its object URL; use dummy or encrypted files, never sensitive commercial records.
+- Evidence references are stored as `supabase://project-ref/bucket/path`.
 - If the UI reports the wrong network, switch MetaMask to Sepolia chain `11155111`.
 - If the contract is deliberately redeployed to Sepolia, commit the updated `src/contracts/deployment.json` so every team member uses the same Sepolia address. Local deploys update only `deployment.local.json`.
 
@@ -141,9 +143,12 @@ The `chain`, `deploy:local`, `seed:local`, `demo:local`, and `dev:local` command
 - Only the assigned carrier submits milestone evidence.
 - Only the immutable Shipper stored at creation can confirm evidence and release payouts.
 - Agreement names are unique per Shipper after case and whitespace normalization.
-- Every agreement has exactly Cargo pickup (30%) and Final delivery (remaining 70%).
+- Every agreement has exactly Cargo pickup and Final delivery; the Shipper selects their payment percentages and the two payouts must total 100%.
 - Milestones are sequential, immutable after confirmation, and bounded by ordered deadlines.
 - The deposit must exactly equal all milestone payouts, preventing stranded or underfunded escrow.
 - Remaining escrow can be refunded only when the current required milestone is still unsubmitted after its deadline.
+- Only the original Shipper can submit that refund transaction.
+- Only the Shipper can open a normal dispute, and only after the Final Delivery Deadline.
+- The assigned Carrier can request Arbitrator action after submitted evidence has waited one hour without a Shipper decision.
 
 The contract is suitable for coursework and local/test-network demonstrations. A production deployment should additionally receive an independent security audit, decentralized oracle/e-signature policy, private evidence access controls, multisig arbitration, durable storage backups, and comprehensive operational monitoring.

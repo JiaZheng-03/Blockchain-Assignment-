@@ -94,14 +94,20 @@ function Register() {
           <Link className="btn btn-secondary auth-back-button" to="/setup">← Back to setup</Link>
           <Link className="brand dark" to="/">ChainCargo</Link>
         </div>
-        <span className="eyebrow">Step 1 of your account setup</span>
-        <h2>Register a wallet role</h2>
-        <p>Each MetaMask account has one permanent role in the Sepolia deployment.</p>
+        <span className="eyebrow">{isRegistered ? 'Account setup complete' : 'Step 1 of your account setup'}</span>
+        <h2>{isRegistered ? 'Your wallet is ready' : 'Register a wallet role'}</h2>
+        <p>
+          {isRegistered
+            ? 'Your account is registered on Sepolia and ready to use in ChainCargo.'
+            : 'Each MetaMask account has one permanent role in the Sepolia deployment.'}
+        </p>
 
-        <div className="wallet-preview">
-          <small>Wallet being registered</small>
-          <code>{account || 'Connect MetaMask to continue'}</code>
-        </div>
+        {!isRegistered && (
+          <div className="wallet-preview">
+            <small>Wallet being registered</small>
+            <code>{account || 'Connect MetaMask to continue'}</code>
+          </div>
+        )}
 
         {registrationSyncing ? (
           <div className="notice success">Registration confirmed. Syncing your wallet profile…</div>
@@ -139,14 +145,34 @@ function Register() {
         )}
 
         {!loading && !registrationSyncing && (isRegistered ? (
-          <>
-            <div className="notice success">
-              This wallet is registered as <strong>{profile.roleLabel}</strong>: {profile.name}.
+          <section className="registration-complete" aria-label="Registered wallet summary">
+            <div className="registration-complete-banner">
+              <span className="registration-check" aria-hidden="true">&#10003;</span>
+              <div>
+                <strong>Registration complete</strong>
+                <p>Your permanent ChainCargo role has been confirmed on-chain.</p>
+              </div>
             </div>
-            <div className="next-actions">
+
+            <dl className="registration-summary">
+              <div>
+                <dt>Display name</dt>
+                <dd>{profile.name}</dd>
+              </div>
+              <div>
+                <dt>Role</dt>
+                <dd><span className="registration-role-badge">{profile.roleLabel}</span></dd>
+              </div>
+              <div className="registration-wallet-row">
+                <dt>Registered wallet</dt>
+                <dd><code>{account}</code></dd>
+              </div>
+            </dl>
+
+            <div className="registration-complete-actions">
               <Link className="btn btn-primary" to="/dashboard">Open dashboard</Link>
             </div>
-          </>
+          </section>
         ) : (
           <form className="form-grid" onSubmit={submit}>
             <div>

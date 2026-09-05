@@ -6,6 +6,8 @@ export const AGREEMENT_FILTERS = [
   { value: '2', label: 'Refunded' },
   { value: '3', label: 'Disputed' },
   { value: '4', label: 'Resolved' },
+  { value: '5', label: 'Pending Carrier Acceptance' },
+  { value: '6', label: 'Rejected' },
 ];
 
 export const AGREEMENT_SORTS = [
@@ -31,12 +33,22 @@ function matchesSearch(agreement, normalizedQuery) {
 function matchesStatus(agreement, status, nowSeconds) {
   if (status === 'all') return true;
   if (status === 'overdue') {
+    if (agreement.status === 5) {
+      return agreement.carrierAcceptanceDeadline < nowSeconds;
+    }
     const actionDeadline = agreement.currentMilestoneState === 0
       ? agreement.currentMilestoneDueAt || agreement.deadline
       : agreement.deadline;
     return agreement.status === 0 && actionDeadline < nowSeconds;
   }
   return agreement.status === Number(status);
+}
+
+function agreementDeadline(agreement) {
+  if (agreement.status === 5) return agreement.carrierAcceptanceDeadline || agreement.deadline;
+  return agreement.currentMilestoneState === 0
+    ? agreement.currentMilestoneDueAt || agreement.deadline
+    : agreement.deadline;
 }
 
 export function filterAndSortAgreements(
@@ -50,12 +62,8 @@ export function filterAndSortAgreements(
   );
 
   return results.sort((left, right) => {
-    const leftDeadline = left.currentMilestoneState === 0
-      ? left.currentMilestoneDueAt || left.deadline
-      : left.deadline;
-    const rightDeadline = right.currentMilestoneState === 0
-      ? right.currentMilestoneDueAt || right.deadline
-      : right.deadline;
+    const leftDeadline = agreementDeadline(left);
+    const rightDeadline = agreementDeadline(right);
     if (sort === 'urgent') {
       const leftPriority = left.status === 0 && left.currentMilestoneState === 0
         ? 0

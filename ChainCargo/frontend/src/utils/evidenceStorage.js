@@ -11,7 +11,6 @@ export const EVIDENCE_MIME_TYPES = [
 export const EVIDENCE_FILE_ACCEPT = `${EVIDENCE_MIME_TYPES.join(',')},.jpg,.jpeg,.png,.webp,.pdf`;
 export const SUPABASE_EVIDENCE_SCHEME = 'supabase://';
 
-const LEGACY_IPFS_GATEWAY = 'https://ipfs.io';
 const MIME_TYPE_EXTENSIONS = {
   'image/jpeg': '.jpg',
   'image/png': '.png',
@@ -132,31 +131,12 @@ export function getSupabaseEvidenceUrl(uri) {
   return `https://${parsed.projectRef}.supabase.co/storage/v1/object/public/${encodedBucket}/${encodedPath}`;
 }
 
-export function isValidIpfsCid(cid) {
-  const value = String(cid || '').trim();
-  const cidV0 = /^Qm[1-9A-HJ-NP-Za-km-z]{44}$/;
-  const cidV1Base32 = /^b[a-z2-7]{20,127}$/;
-  const cidV1Base58 = /^z[1-9A-HJ-NP-Za-km-z]{20,127}$/;
-  return cidV0.test(value) || cidV1Base32.test(value) || cidV1Base58.test(value);
-}
-
-export function ipfsUriToCid(uri) {
-  const value = String(uri || '').trim();
-  if (!value.startsWith('ipfs://')) return '';
-  const cid = value.slice(7);
-  return isValidIpfsCid(cid) ? cid : '';
-}
-
 export function getEvidencePublicUrl(uri) {
-  const supabaseUrl = getSupabaseEvidenceUrl(uri);
-  if (supabaseUrl) return supabaseUrl;
-  const legacyCid = ipfsUriToCid(uri);
-  return legacyCid ? `${LEGACY_IPFS_GATEWAY}/ipfs/${legacyCid}` : '';
+  return getSupabaseEvidenceUrl(uri);
 }
 
 export function getEvidenceStorageLabel(uri) {
   if (parseSupabaseProofUri(uri)) return 'Supabase Storage';
-  if (ipfsUriToCid(uri)) return 'legacy IPFS';
   return 'unknown storage';
 }
 
@@ -251,7 +231,7 @@ export async function uploadEvidenceToSupabase({
 export async function verifyEvidenceFromStorage({ expectedHash, evidenceUrl }) {
   if (!evidenceUrl) {
     throw new Error(
-      'This evidence is not a valid ChainCargo Supabase or legacy IPFS reference and cannot be verified automatically.',
+      'This evidence is not a valid ChainCargo Supabase reference and cannot be verified automatically.',
     );
   }
   const response = await fetch(evidenceUrl, { cache: 'no-store' });

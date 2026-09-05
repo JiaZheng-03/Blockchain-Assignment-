@@ -48,6 +48,9 @@ export function getDeadlineState(deadline, nowSeconds, active = true) {
 }
 
 export function getAgreementActionDeadline(agreement) {
+  if (agreement.status === 5) {
+    return agreement.carrierAcceptanceDeadline || agreement.deadline;
+  }
   if (agreement.status === 0 && agreement.currentMilestoneState === 0) {
     return agreement.currentMilestoneDueAt || agreement.deadline;
   }

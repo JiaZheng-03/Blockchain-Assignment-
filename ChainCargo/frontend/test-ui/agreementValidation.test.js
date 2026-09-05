@@ -42,9 +42,7 @@ import {
   getSupabaseEvidenceUrl,
   hashEvidenceBytes,
   hashEvidenceFile,
-  isValidIpfsCid,
   isValidSupabaseBucketName,
-  ipfsUriToCid,
   normalizeEvidenceMimeType,
   parseSupabaseProofUri,
   supabaseProjectRefFromUrl,
@@ -207,7 +205,24 @@ test('summarizes escrow, statuses, workflow, and deadline risk for dashboard cha
   assert.equal(metrics.awaitingApprovalCount, 1);
   assert.equal(metrics.deadlineCounts.critical, 1);
   assert.equal(metrics.nextDeadlineAgreement.id, 1);
-  assert.deepEqual(metrics.statusCounts.map(({ count }) => count), [2, 1, 0, 1, 0]);
+  assert.deepEqual(metrics.statusCounts.map(({ count }) => count), [2, 1, 0, 1, 0, 0, 0]);
+});
+
+test('filters pending acceptance and rejected agreements and uses the Carrier response deadline', () => {
+  const agreements = [
+    { id: 10, status: 5, carrierAcceptanceDeadline: 250, deadline: 900, createdAt: 100 },
+    { id: 11, status: 6, deadline: 800, createdAt: 200 },
+  ];
+
+  assert.deepEqual(
+    filterAndSortAgreements(agreements, { status: '5' }).map(({ id }) => id),
+    [10],
+  );
+  assert.deepEqual(
+    filterAndSortAgreements(agreements, { status: '6' }).map(({ id }) => id),
+    [11],
+  );
+  assert.equal(getAgreementActionDeadline(agreements[0]), 250);
 });
 
 test('assigns transparent carrier reputation tiers from on-chain points', () => {
@@ -273,14 +288,6 @@ test('builds safe Supabase evidence links and wallet upload authorization messag
   assert.equal(getEvidenceStorageLabel(proofURI), 'Supabase Storage');
   assert.equal(getEvidencePublicUrl('https://attacker.example/file'), '');
   assert.equal(parseSupabaseProofUri('supabase://invalid/../secret.pdf'), null);
-
-  // Evidence recorded before the migration remains readable from a neutral public IPFS gateway.
-  const cid = `b${'a'.repeat(58)}`;
-  assert.equal(isValidIpfsCid(cid), true);
-  assert.equal(ipfsUriToCid(`ipfs://${cid}`), cid);
-  assert.equal(getEvidencePublicUrl(`ipfs://${cid}`), `https://ipfs.io/ipfs/${cid}`);
-  assert.equal(getEvidencePublicUrl('ipfs://not-a-cid'), '');
-  assert.equal(getEvidenceStorageLabel(`ipfs://${cid}`), 'legacy IPFS');
 
   const message = createUploadAuthorizationMessage({
     account: carrier,

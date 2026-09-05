@@ -19,7 +19,7 @@ const errorMessages = {
   EmptyTitle: 'Enter an agreement name.',
   ZeroFunding: 'The escrow amount must be greater than zero.',
   MilestoneArrayLengthMismatch: 'The milestone fields have inconsistent lengths.',
-  InvalidProofURI: 'Evidence must use a non-empty, bounded supabase:// or legacy ipfs:// reference.',
+  InvalidProofURI: 'Evidence must use a valid, non-empty supabase:// reference.',
   DeadlineRefundAvailable: 'The pending milestone deadline has passed. The refund must be handled before a new dispute.',
   DuplicateAgreementName: 'You already created an agreement with this name. Choose a different agreement name.',
   FixedMilestonesRequired: 'Agreements must use the fixed Cargo pickup and Final delivery milestones.',
@@ -29,6 +29,8 @@ const errorMessages = {
   ExtensionRequestClosed: 'The original milestone deadline has passed. The Shipper may now refund the remaining escrow.',
   ExtensionAlreadyRequested: 'This milestone has already used its one extension request.',
   NoPendingExtension: 'There is no pending deadline extension request for this milestone.',
+  AcceptancePeriodClosed: 'The Carrier response deadline has passed. The Shipper may now cancel and recover the escrow.',
+  NoEvidenceResubmissionWindow: 'There is no time available for replacement evidence before the next milestone or Final Delivery Deadline.',
 };
 
 function findRevertData(error) {
@@ -66,6 +68,8 @@ function describeCustomError(parsed) {
       return 'Milestone payouts must exactly equal the deposited escrow amount.';
     case 'ReviewPeriodActive':
       return `The evidence review period ends at ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
+    case 'AcceptancePeriodActive':
+      return `The Shipper can cancel this unaccepted agreement after ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
     case 'ExtensionRequestTooEarly':
       return `The Carrier can request a 24-hour extension starting at ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
     case 'DisputeNotAvailableBeforeFinalDeadline':

@@ -1,12 +1,28 @@
 {
-  "address": "0xe4F9AEc0cE27A9a149541E4276a634D6b6e6C3dD",
+  "address": "0xc81c9B9719D9369cDBf0E83d8895487b0af1a5be",
   "chainId": 11155111,
-  "deploymentBlock": 11620342,
+  "deploymentBlock": 11636997,
   "abi": [
     {
       "inputs": [],
       "stateMutability": "nonpayable",
       "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "availableAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "AcceptancePeriodActive",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "AcceptancePeriodClosed",
+      "type": "error"
     },
     {
       "inputs": [
@@ -242,6 +258,11 @@
     },
     {
       "inputs": [],
+      "name": "NoEvidenceResubmissionWindow",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "NoPendingExtension",
       "type": "error"
     },
@@ -326,6 +347,25 @@
           "internalType": "uint256",
           "name": "agreementId",
           "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "carrier",
+          "type": "address"
+        }
+      ],
+      "name": "AgreementAccepted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
         }
       ],
       "name": "AgreementCompleted",
@@ -366,6 +406,31 @@
         }
       ],
       "name": "AgreementCreated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "carrier",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "refundAmount",
+          "type": "uint256"
+        }
+      ],
+      "name": "AgreementRejected",
       "type": "event"
     },
     {
@@ -590,12 +655,12 @@
         },
         {
           "indexed": false,
-          "internalType": "uint256",
-          "name": "refundAmount",
-          "type": "uint256"
+          "internalType": "uint64",
+          "name": "resubmissionDueAt",
+          "type": "uint64"
         }
       ],
-      "name": "EvidenceRejected",
+      "name": "EvidenceRevisionRequested",
       "type": "event"
     },
     {
@@ -627,31 +692,6 @@
         }
       ],
       "name": "ExtensionCompensationPaid",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": true,
-          "internalType": "uint256",
-          "name": "agreementId",
-          "type": "uint256"
-        },
-        {
-          "indexed": true,
-          "internalType": "uint256",
-          "name": "milestoneIndex",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "payout",
-          "type": "uint256"
-        }
-      ],
-      "name": "MilestoneApproved",
       "type": "event"
     },
     {
@@ -752,6 +792,31 @@
       "inputs": [
         {
           "indexed": true,
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "shipper",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "refundAmount",
+          "type": "uint256"
+        }
+      ],
+      "name": "UnacceptedAgreementCancelled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
           "internalType": "address",
           "name": "account",
           "type": "address"
@@ -774,7 +839,33 @@
     },
     {
       "inputs": [],
+      "name": "CARRIER_ACCEPTANCE_PERIOD",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "CONTRACT_VERSION",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "EVIDENCE_RESUBMISSION_PERIOD",
       "outputs": [
         {
           "internalType": "uint256",
@@ -981,6 +1072,19 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        }
+      ],
+      "name": "acceptAgreement",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "agreementCount",
       "outputs": [
@@ -1012,24 +1116,6 @@
       "type": "function"
     },
     {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "agreementId",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "milestoneIndex",
-          "type": "uint256"
-        }
-      ],
-      "name": "approveMilestone",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
       "inputs": [],
       "name": "arbitrator",
       "outputs": [
@@ -1056,6 +1142,38 @@
           "internalType": "bool",
           "name": "",
           "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        }
+      ],
+      "name": "cancelUnacceptedAgreement",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "carrierAcceptanceDeadline",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
         }
       ],
       "stateMutability": "view",
@@ -1526,6 +1644,19 @@
         }
       ],
       "name": "register",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        }
+      ],
+      "name": "rejectAgreement",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"

@@ -16,10 +16,13 @@ import {
 
 const eventDetails = {
   AgreementCreated: (args) => `${ethers.formatEther(args.amount)} ETH deposited into escrow`,
+  AgreementAccepted: () => 'Carrier accepted the agreement and activated the milestone workflow',
+  AgreementRejected: (args) => `Carrier rejected the agreement; ${ethers.formatEther(args.refundAmount)} ETH returned to the Shipper`,
+  UnacceptedAgreementCancelled: (args) => `Carrier response period expired; ${ethers.formatEther(args.refundAmount)} ETH returned to the Shipper`,
   MilestoneProofSubmitted: (args) => `Evidence submitted for milestone ${Number(args.milestoneIndex) + 1}`,
-  MilestoneApproved: (args) => `${ethers.formatEther(args.payout)} ETH released for milestone ${Number(args.milestoneIndex) + 1}`,
   MilestoneConfirmed: (args) => `${ethers.formatEther(args.paymentAmount)} ETH released after Shipper confirmation for milestone ${Number(args.milestoneIndex) + 1}`,
   CarrierReputationAwarded: (args) => `${args.points.toString()} reputation points awarded to the Carrier (${args.totalPoints.toString()} total)`,
+  EvidenceRevisionRequested: (args) => `Shipper requested replacement evidence for milestone ${Number(args.milestoneIndex) + 1}; resubmission is due ${new Date(Number(args.resubmissionDueAt) * 1000).toLocaleString()}`,
   AgreementCompleted: () => 'All milestones paid and the agreement completed',
   Refunded: (args) => `${ethers.formatEther(args.amount)} ETH returned to the shipper`,
   DisputeOpened: (args) => `Dispute opened: ${args.reason}`,
