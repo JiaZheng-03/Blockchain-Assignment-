@@ -12,7 +12,7 @@ const NOTIFICATION_ALERT_PREFIX = 'chaincargoDeadlineAlert';
 
 function NotificationButton() {
   const containerRef = useRef(null);
-  const { notifications, markRead, error } = useNotifications();
+  const { notifications, markRead, markAllRead, error } = useNotifications();
   const unreadCount = notifications.filter((item) => !item.read).length;
   const [open, setOpen] = useState(false);
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
@@ -130,7 +130,7 @@ function NotificationButton() {
         type="button"
       >
         <span aria-hidden="true" className="notification-bell" />
-        {unreadCount + alerts.length > 0 && <span className="notification-count">{unreadCount + alerts.length}</span>}
+        {unreadCount > 0 && <span className="notification-count">{unreadCount}</span>}
       </button>
       {open && (
         <section aria-label="Notifications" className="notification-popover">
@@ -141,6 +141,11 @@ function NotificationButton() {
             </div>
             {permission === 'granted' && <span className="badge">Browser alerts on</span>}
           </div>
+          <div className="notification-item-actions">
+            <button type="button" disabled={unreadCount === 0} onClick={markAllRead}>
+              Mark All as Read
+            </button>
+          </div>
           {error && <p role="status" className="notification-permission-warning">{error}</p>}
           <div className="notification-list">
             {notifications.map((notice) => (
@@ -149,7 +154,7 @@ function NotificationButton() {
                 <span>{notice.message}</span>
                 <time dateTime={new Date(notice.timestamp * 1000).toISOString()}>{new Date(notice.timestamp * 1000).toLocaleString()}</time>
                 <div className="notification-item-actions">
-                  <Link to={`/agreement/${notice.agreementId}`} onClick={() => setOpen(false)}>View Agreement</Link>
+                  <Link to={`/agreement/${notice.agreementId}`} onClick={() => { markRead(notice.key); setOpen(false); }}>View Agreement</Link>
                   {!notice.read && <button type="button" onClick={() => markRead(notice.key)}>Mark as Read</button>}
                 </div>
               </article>

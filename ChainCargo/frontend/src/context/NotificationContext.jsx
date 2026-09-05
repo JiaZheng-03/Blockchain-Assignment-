@@ -2,15 +2,11 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { useWallet } from './WalletContext';
 import { useContract } from './ContractContext';
 import { decodeEscrowEvent, loadContractLogsInChunks, selectHistoryStartBlock } from '../utils/historyEvents';
-import { eventNotification, mergeNotificationQueue, notificationKey, notificationScope, refundNotification } from '../utils/notifications';
+import { createNotificationReadStore, eventNotification, mergeNotificationQueue, notificationKey, notificationScope, refundNotification } from '../utils/notifications';
 
 const NotificationContext = createContext(null);
-const memoryRead = new Set();
-const presented = new Set();
-const wasRead = (key) => {
-  try { return memoryRead.has(key) || localStorage.getItem(key) === 'read'; }
-  catch { return memoryRead.has(key); }
-};
+const readStore = createNotificationReadStore(() => window.localStorage);
+const wasRead = readStore.isRead;
 
 export function NotificationProvider({ children }) {
   const { account, isAuthenticated } = useWallet();
@@ -20,9 +16,15 @@ export function NotificationProvider({ children }) {
   const [items, setItems] = useState([]);
   const [queue, setQueue] = useState([]);
   const [error, setError] = useState('');
+  const [presented] = useState(() => new Set());
   const deploymentBlock = deployment?.deploymentBlock;
   const deploymentAddress = deployment?.address;
   const deploymentChain = deployment?.chainId;
+
+  useEffect(() => {
+    presented.clear();
+    setQueue([]);
+  }, [enabled, scope, presented]);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -94,27 +96,34 @@ export function NotificationProvider({ children }) {
     }
     check();
     const timer = window.setInterval(check, 30_000);
-    const syncRead = () => {
+    const syncRead = (event) => {
+      if (event.key !== null && !event.key?.startsWith(`chaincargo:notification:${scope}:`)) return;
       setItems((current) => current.map((item) => ({ ...item, read: wasRead(item.key) })));
       setQueue((current) => current.filter((item) => !wasRead(item.key)));
     };
     window.addEventListener('storage', syncRead);
     return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener('storage', syncRead); };
-  }, [account, address, deploymentAddress, deploymentBlock, deploymentChain, enabled, expectedChainId, getReadContract, refreshKey, scope]);
+  }, [account, address, deploymentAddress, deploymentBlock, deploymentChain, enabled, expectedChainId, getReadContract, refreshKey, scope, presented]);
 
   const notifications = enabled ? items.filter((item) => item.scope === scope) : [];
   const pending = enabled ? queue.filter((item) => item.scope === scope) : [];
   function markRead(key) {
-    memoryRead.add(key);
-    try { localStorage.setItem(key, 'read'); } catch { /* In-memory reads remain available. */ }
-    setItems((current) => current.map((item) => item.key === key ? { ...item, read: true } : item));
-    setQueue((current) => current.filter((item) => item.key !== key));
+    markKeysRead([key]);
+  }
+  function markKeysRead(keys) {
+    const allowed = new Set(notifications.filter((item) => keys.includes(item.key)).map((item) => item.key));
+    readStore.markRead(allowed);
+    setItems((current) => current.map((item) => allowed.has(item.key) ? { ...item, read: true } : item));
+    setQueue((current) => current.filter((item) => !allowed.has(item.key)));
+  }
+  function markAllRead() {
+    markKeysRead(notifications.filter((item) => !item.read).map((item) => item.key));
   }
   function close() {
     pending.forEach((item) => presented.add(item.key));
     setQueue([]);
   }
-  return <NotificationContext.Provider value={{ notifications, pending, markRead, close, error: enabled ? error : '' }}>{children}</NotificationContext.Provider>;
+  return <NotificationContext.Provider value={{ notifications, pending, markRead, markAllRead, close, error: enabled ? error : '' }}>{children}</NotificationContext.Provider>;
 }
 
 export const useNotifications = () => useContext(NotificationContext);

@@ -2,6 +2,33 @@ const lower = (value) => String(value || '').toLowerCase();
 export const notificationScope = (chainId, address, account) => `${Number(chainId)}:${lower(address)}:${lower(account)}`;
 export const notificationKey = (scope, log) => `chaincargo:notification:${scope}:${lower(log.transactionHash)}:${log.index ?? log.logIndex}`;
 
+// Persist before updating the UI/navigation. Memory is only a storage-failure fallback.
+export function createNotificationReadStore(getStorage) {
+  const fallback = new Set();
+  return {
+    isRead(key) {
+      try { return getStorage().getItem(key) === 'read' || fallback.has(key); }
+      catch { return fallback.has(key); }
+    },
+    markRead(keys) {
+      for (const key of keys) {
+        try { getStorage().setItem(key, 'read'); fallback.delete(key); }
+        catch { fallback.add(key); }
+      }
+    },
+  };
+}
+
+export function notificationPosition(pending, selection) {
+  const found = pending.findIndex((item) => item.key === selection?.key);
+  return found >= 0 ? found : Math.min(selection?.index || 0, pending.length - 1);
+}
+
+export function nextUnreadSelection(pending, position) {
+  const next = pending[position + 1] || pending[0];
+  return { key: next?.key, index: 0 };
+}
+
 export function mergeNotificationQueue(current, next, scope, presented) {
   const eligible = next.filter((item) => item.scope === scope && !item.read);
   const byKey = new Map(eligible.map((item) => [item.key, item]));
