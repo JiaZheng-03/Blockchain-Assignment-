@@ -107,7 +107,7 @@ function AccountPermissionDialog() {
             })}
           </div>
           <div className="dialog-actions">
-            <button className="btn btn-secondary" type="button" onClick={closeAccountSwitcher}>Cancel</button>
+            <button className="btn btn-danger" type="button" onClick={closeAccountSwitcher}>Cancel</button>
           </div>
         </section>
       </div>
@@ -134,7 +134,7 @@ function AccountPermissionDialog() {
         </ol>
         <div className="notice">Changing site access does not delete an address’s on-chain registration or agreements.</div>
         <div className="dialog-actions">
-          <button className="btn btn-secondary" type="button" onClick={closeAccountPermissionHelp}>Cancel</button>
+          <button className="btn btn-danger" type="button" onClick={closeAccountPermissionHelp}>Cancel</button>
           <button className="btn btn-primary" type="button" onClick={authorizeAdditionalAccount}>Continue to MetaMask</button>
         </div>
       </section>

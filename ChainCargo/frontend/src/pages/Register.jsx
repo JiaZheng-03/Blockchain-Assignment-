@@ -92,7 +92,7 @@ function Register() {
       <div className="form-card auth-card setup-card">
         <div className="auth-card-header">
           <Link className="btn btn-secondary auth-back-button" to="/setup">← Back to setup</Link>
-          <Link className="brand dark" to="/">ChainCargo</Link>
+          <Link className="brand dark" to="/"><img src="/favicon.svg" alt="" width="30" height="30" aria-hidden="true" />ChainCargo</Link>
         </div>
         <span className="eyebrow">{isRegistered ? 'Account setup complete' : 'Step 1 of your account setup'}</span>
         <h2>{isRegistered ? 'Your wallet is ready' : 'Register a wallet role'}</h2>

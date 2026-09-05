@@ -25,7 +25,7 @@ export default function Sidebar({ onClose }) {
     <aside className="sidebar" id="workspace-navigation">
       <div className="sidebar-brand-row">
         <Link to="/" className="brand sidebar-brand" onClick={onClose}>
-          <span className="brand-mark"><Icon name="box" size={24} /></span>
+          <span className="brand-mark"><img src="/favicon.svg" alt="" width="41" height="41" aria-hidden="true" /></span>
           <span>ChainCargo<small>LOGISTICS, CONNECTED</small></span>
         </Link>
         <button className="icon-button mobile-nav-close" aria-label="Close navigation" onClick={onClose} type="button"><Icon name="close" /></button>

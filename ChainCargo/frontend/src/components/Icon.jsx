@@ -24,7 +24,7 @@ const paths = {
 export default function Icon({ name, size = 20, className = '' }) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {(paths[name] || paths.box).map((d, index) => <path d={d} key={index} />)}
+      {(paths[name] || paths.box).map((d, index) => <path className={index === 1 ? 'icon-detail' : undefined} d={d} key={index} />)}
     </svg>
   );
 }

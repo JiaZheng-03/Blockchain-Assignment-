@@ -2,30 +2,56 @@
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #edf0f8;
-  background-color: #0d1017;
-  color-scheme: dark;
-  --canvas: #0d1017;
-  --surface: #191e2a;
-  --surface-inset: #121722;
-  --surface-raised: #222938;
-  --text: #edf0f8;
-  --muted: #9aa5bb;
-  --subtle: #77839c;
-  --border: #2d3546;
-  --mint: #71e4c3;
-  --mint-soft: #19352f;
-  --mint-border: #315c50;
-  --lavender: #b1a2f5;
-  --lavender-soft: #292740;
-  --lavender-border: #4c466c;
-  --amber: #f4c478;
-  --amber-soft: #332e22;
-  --amber-border: #5e5034;
-  --rose: #ff92a4;
-  --rose-soft: #35232f;
-  --rose-border: #65404d;
-  --gradient: linear-gradient(110deg, #72e3c3 0%, #a59bf5 100%);
+  color: var(--text);
+  background-color: var(--canvas);
+  color-scheme: light;
+
+  /* Neutral workspace; the sidebar scopes its own inverse surface tokens. */
+  --canvas: #f4f7fc;
+  --surface: #ffffff;
+  --surface-inset: #f7f9fd;
+  --surface-raised: #eaf0f8;
+  --text: #162842;
+  --muted: #52647c;
+  --subtle: #60718a;
+  --border: #d5dfed;
+  --border-strong: #859ab7;
+  --on-primary: #ffffff;
+
+  /* Darker blue and orange inks preserve contrast on light surfaces. */
+  --primary: #0864d8;
+  --primary-hover: #064da9;
+  --primary-soft: #eaf3ff;
+  --primary-border: #8cb9ef;
+  --blue: #147bff;
+  --deep-blue: #0b2a6f;
+  --tech-blue: #00a8ff;
+  --accent: #ff8a1f;
+  --accent-light: #ffb45b;
+  --accent-ink: #9a4700;
+  --accent-soft: #fff3e5;
+  --accent-border: #efbc7f;
+  --success: #187045;
+  --success-soft: #eaf7ef;
+  --success-border: #86bca0;
+  --warning: var(--accent-ink);
+  --warning-soft: var(--accent-soft);
+  --warning-border: var(--accent-border);
+  --danger: #b42336;
+  --danger-soft: #fff0f2;
+  --danger-border: #df98a2;
+  --danger-hover: #ffe2e7;
+  --disabled-bg: #e8edf4;
+  --disabled-text: #64748b;
+  --focus: #147bff;
+  --focus-halo: #147bff26;
+  --selection: #cce2ff;
+  --shadow: 0 4px 18px #0b2a6f08;
+  --shadow-raised: 0 18px 48px #0b2a6f20;
+  --overlay: #091b38a6;
+  --primary-gradient: linear-gradient(115deg, #0756bd, #086ad9);
+  --brand-gradient: linear-gradient(135deg, var(--deep-blue), var(--blue) 72%, var(--accent));
+  --gradient: var(--primary-gradient);
   --mono: 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -58,11 +84,11 @@ button, input, select, textarea { font: inherit; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 button, a { touch-action: manipulation; }
 button:disabled { cursor: not-allowed; }
-a { color: var(--mint); text-underline-offset: 4px; }
-button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--mint); outline-offset: 4px; }
+a { color: var(--primary); text-underline-offset: 4px; }
+button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 svg { flex-shrink: 0; vertical-align: middle; }
-::selection { background: #71e4c34d; color: #fff; }
-* { scrollbar-width: thin; scrollbar-color: #3c455a transparent; }
+::selection { background: var(--selection); color: var(--text); }
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 h1, h2, h3 { line-height: 1.25; letter-spacing: -0.025em; }
 p { color: var(--muted); }
 code, kbd { font-family: var(--mono); }

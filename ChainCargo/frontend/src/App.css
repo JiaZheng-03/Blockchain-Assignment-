@@ -2,7 +2,7 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, var(--surface) 0%, var(--lavender-soft) 100%);
+  background: linear-gradient(135deg, var(--surface) 0%, var(--primary-soft) 100%);
 }
 
 .navbar {
@@ -86,7 +86,7 @@
 }
 
 .navbar-profile.active span {
-  color: var(--lavender);
+  color: var(--primary);
 }
 
 .notification-menu {
@@ -139,7 +139,7 @@
 
 .notification-count {
   align-items: center;
-  background: var(--rose);
+  background: var(--danger);
   border-radius: 50%;
   display: inline-flex;
   font-size: 0.72rem;
@@ -196,7 +196,7 @@
 }
 
 .notification-item {
-  border-left: 4px solid var(--amber);
+  border-left: 4px solid var(--warning);
   display: grid;
   gap: 0.25rem;
   padding: 0.7rem 0.75rem;
@@ -208,7 +208,7 @@
 
 .notification-item.deadline-critical,
 .notification-item.deadline-overdue {
-  border-left-color: var(--rose);
+  border-left-color: var(--danger);
 }
 
 .notification-item span,
@@ -224,9 +224,9 @@
 }
 
 .notification-permission-warning {
-  background: var(--amber-soft);
-  border-left: 4px solid var(--amber);
-  color: var(--amber);
+  background: var(--warning-soft);
+  border-left: 4px solid var(--warning);
+  color: var(--warning);
   font-size: 0.84rem;
   margin: 0 0 0.75rem;
   padding: 0.65rem;
@@ -315,17 +315,17 @@
 }
 
 .btn-primary {
-  background: var(--lavender);
+  background: var(--primary);
   color: var(--text);
 }
 
 .btn-secondary {
-  background: var(--lavender-soft);
-  color: var(--lavender);
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 .btn-danger {
-  background: var(--rose);
+  background: var(--danger);
   color: var(--text);
 }
 
@@ -367,8 +367,8 @@
 }
 
 .stat-box {
-  background: linear-gradient(135deg, var(--lavender-soft) 0%, var(--surface-inset) 100%);
-  border: 1px solid var(--lavender-soft);
+  background: linear-gradient(135deg, var(--primary-soft) 0%, var(--surface-inset) 100%);
+  border: 1px solid var(--primary-soft);
   border-radius: 1rem;
   padding: 1rem;
 }
@@ -399,7 +399,7 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: var(--lavender);
+  border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
   outline: none;
 }
@@ -410,8 +410,8 @@ textarea:focus {
   border-radius: 999px;
   font-size: 0.8rem;
   font-weight: 700;
-  background: var(--lavender-soft);
-  color: var(--lavender);
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 .role-badge {
@@ -419,18 +419,18 @@ textarea:focus {
 }
 
 .role-shipper {
-  background: var(--lavender-soft);
-  color: var(--lavender);
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 .role-carrier {
-  background: var(--mint-soft);
-  color: var(--mint);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 .role-arbitrator {
-  background: var(--lavender-soft);
-  color: var(--lavender);
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 .dialog-backdrop {
@@ -494,11 +494,11 @@ textarea:focus {
 }
 
 .account-choice:hover {
-  border-color: var(--lavender);
+  border-color: var(--primary);
 }
 
 .account-choice.current {
-  background: var(--lavender-soft);
+  background: var(--primary-soft);
 }
 
 .account-choice > span:first-child {
@@ -569,8 +569,8 @@ textarea:focus {
 }
 
 .setup-step.complete .setup-step-number {
-  background: var(--mint-soft);
-  color: var(--mint);
+  background: var(--success-soft);
+  color: var(--success);
 }
 
 .command-line {
@@ -704,11 +704,11 @@ textarea:focus {
 }
 
 .chart-status-0 {
-  background: var(--lavender);
+  background: var(--primary);
 }
 
 .chart-status-1 {
-  background: var(--mint);
+  background: var(--success);
 }
 
 .chart-status-2 {
@@ -716,11 +716,11 @@ textarea:focus {
 }
 
 .chart-status-3 {
-  background: var(--amber);
+  background: var(--warning);
 }
 
 .chart-status-4 {
-  background: var(--lavender);
+  background: var(--primary);
 }
 
 .workflow-summary-grid {
@@ -749,19 +749,19 @@ textarea:focus {
 }
 
 .workflow-summary-grid .deadline-safe {
-  background: var(--mint-soft);
-  border-color: var(--mint-border);
+  background: var(--success-soft);
+  border-color: var(--success-border);
 }
 
 .workflow-summary-grid .deadline-warning {
-  background: var(--amber-soft);
-  border-color: var(--amber-border);
+  background: var(--warning-soft);
+  border-color: var(--warning-border);
 }
 
 .workflow-summary-grid .deadline-critical,
 .workflow-summary-grid .deadline-overdue {
-  background: var(--rose-soft);
-  border-color: var(--rose-border);
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
 }
 
 .arbitration-summary {
@@ -796,19 +796,19 @@ textarea:focus {
 }
 
 .next-deadline-card.deadline-safe {
-  background: var(--mint-soft);
-  border-color: var(--mint-border);
+  background: var(--success-soft);
+  border-color: var(--success-border);
 }
 
 .next-deadline-card.deadline-warning {
-  background: var(--amber-soft);
-  border-color: var(--amber-border);
+  background: var(--warning-soft);
+  border-color: var(--warning-border);
 }
 
 .next-deadline-card.deadline-critical,
 .next-deadline-card.deadline-overdue {
-  background: var(--rose-soft);
-  border-color: var(--rose-border);
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
 }
 
 .chart-empty-state {
@@ -835,7 +835,7 @@ textarea:focus {
 }
 
 .agreement-control-summary .text-button {
-  color: var(--lavender);
+  color: var(--primary);
   font-weight: 700;
 }
 
@@ -887,16 +887,16 @@ textarea:focus {
 }
 
 .agreement-card.deadline-safe {
-  border-left-color: var(--mint);
+  border-left-color: var(--success);
 }
 
 .agreement-card.deadline-warning {
-  border-left-color: var(--amber);
+  border-left-color: var(--warning);
 }
 
 .agreement-card.deadline-critical,
 .agreement-card.deadline-overdue {
-  border-left-color: var(--rose);
+  border-left-color: var(--danger);
 }
 
 .dispute-card-alert,
@@ -909,10 +909,10 @@ textarea:focus {
 
 .dispute-card-alert,
 .dispute-status-banner {
-  background: #fff7ed;
-  border: 1px solid #fdba74;
+  background: var(--warning-soft);
+  border: 1px solid var(--warning-border);
   border-radius: 0.5rem;
-  color: #9a3412;
+  color: var(--warning);
   padding: 0.75rem;
 }
 
@@ -929,9 +929,9 @@ textarea:focus {
 
 .dispute-status-mark {
   align-items: center;
-  background: #ea580c;
+  background: var(--warning);
   border-radius: 50%;
-  color: #ffffff;
+  color: var(--on-primary);
   display: inline-flex;
   flex: 0 0 2rem;
   font-weight: 800;
@@ -944,8 +944,8 @@ textarea:focus {
 }
 
 .dispute-participant-details {
-  background: #fffaf5;
-  border: 1px solid #fed7aa;
+  background: var(--warning-soft);
+  border: 1px solid var(--warning-border);
   border-radius: 0.5rem;
   display: grid;
   gap: 1rem;
@@ -960,7 +960,7 @@ textarea:focus {
 }
 
 .dispute-participant-details small {
-  color: #9a3412;
+  color: var(--warning);
 }
 
 .dispute-reason-row {
@@ -995,22 +995,22 @@ textarea:focus {
 }
 
 .deadline-indicator.deadline-safe {
-  background: var(--mint-soft);
-  border-color: var(--mint-border);
-  color: var(--mint);
+  background: var(--success-soft);
+  border-color: var(--success-border);
+  color: var(--success);
 }
 
 .deadline-indicator.deadline-warning {
-  background: var(--amber-soft);
-  border-color: var(--amber-border);
-  color: var(--amber);
+  background: var(--warning-soft);
+  border-color: var(--warning-border);
+  color: var(--warning);
 }
 
 .deadline-indicator.deadline-critical,
 .deadline-indicator.deadline-overdue {
-  background: var(--rose-soft);
-  border-color: var(--rose-border);
-  color: var(--rose);
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+  color: var(--danger);
 }
 
 .next-step-notice {
@@ -1023,22 +1023,22 @@ textarea:focus {
 }
 
 .notice {
-  background: var(--lavender-soft);
-  border: 1px solid var(--lavender-border);
+  background: var(--primary-soft);
+  border: 1px solid var(--primary-border);
   border-radius: 0.75rem;
-  color: var(--lavender);
+  color: var(--primary);
   margin: 0.75rem 0;
   padding: 0.75rem 0.9rem;
 }
 
 .notice.error {
-  background: var(--rose-soft);
-  border-color: var(--rose-border);
-  color: var(--rose);
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+  color: var(--danger);
 }
 
 .field-error {
-  color: var(--rose);
+  color: var(--danger);
   display: block;
   font-weight: 600;
 }
@@ -1046,20 +1046,20 @@ textarea:focus {
 input[aria-invalid="true"],
 select[aria-invalid="true"],
 textarea[aria-invalid="true"] {
-  border-color: var(--rose);
+  border-color: var(--danger);
   box-shadow: 0 0 0 2px rgb(239 68 68 / 12%);
 }
 
 .notice.success {
-  background: var(--mint-soft);
-  border-color: var(--mint-border);
-  color: var(--mint);
+  background: var(--success-soft);
+  border-color: var(--success-border);
+  color: var(--success);
 }
 
 .notice.warning {
-  background: var(--amber-soft);
-  border-color: var(--amber-border);
-  color: var(--amber);
+  background: var(--warning-soft);
+  border-color: var(--warning-border);
+  color: var(--warning);
 }
 
 .notice[data-toast-converted='true'] {
@@ -1090,14 +1090,14 @@ textarea[aria-invalid="true"] {
 }
 
 .toast-popup h2 {
-  color: var(--mint);
+  color: var(--success);
   font-size: 1.3rem;
   font-weight: 800;
   margin: 0 0 1.15rem;
 }
 
 .toast-popup.error h2 {
-  color: var(--rose);
+  color: var(--danger);
 }
 
 .toast-message strong,
@@ -1119,7 +1119,7 @@ textarea[aria-invalid="true"] {
 }
 
 .toast-popup button {
-  background: var(--mint);
+  background: var(--success);
   border: 0;
   border-radius: 2px;
   color: var(--text);
@@ -1134,7 +1134,7 @@ textarea[aria-invalid="true"] {
 }
 
 .toast-popup.error button {
-  background: var(--rose);
+  background: var(--danger);
 }
 
 .toast-popup button:hover {
@@ -1160,7 +1160,7 @@ textarea[aria-invalid="true"] {
 }
 
 .eyebrow {
-  color: var(--lavender);
+  color: var(--primary);
   display: block;
   font-size: 0.75rem;
   font-weight: 800;
@@ -1214,17 +1214,17 @@ textarea[aria-invalid="true"] {
 }
 
 .toast-popup .confirmation-actions .confirmation-confirm {
-  background: var(--lavender);
+  background: var(--primary);
 }
 
 .toast-popup .confirmation-actions .confirmation-reject {
-  background: var(--rose);
+  background: var(--danger);
 }
 
 .carrier-reputation-preview {
   align-items: center;
-  background: linear-gradient(135deg, var(--amber-soft), var(--amber-soft));
-  border: 1px solid var(--amber-border);
+  background: linear-gradient(135deg, var(--warning-soft), var(--warning-soft));
+  border: 1px solid var(--warning-border);
   border-radius: 0.85rem;
   display: grid;
   gap: 0.75rem;
@@ -1243,9 +1243,9 @@ textarea[aria-invalid="true"] {
 
 .reputation-mark {
   align-items: center;
-  background: var(--amber-soft);
+  background: var(--warning-soft);
   border-radius: 50%;
-  color: var(--amber);
+  color: var(--warning);
   display: flex;
   font-size: 1.1rem;
   height: 2.25rem;
@@ -1284,13 +1284,13 @@ textarea[aria-invalid="true"] {
 }
 
 .wizard-steps button.active {
-  background: var(--lavender-soft);
-  border-color: var(--lavender);
-  color: var(--lavender);
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .wizard-steps button.complete {
-  color: var(--mint);
+  color: var(--success);
 }
 
 .wizard-steps button span {
@@ -1305,12 +1305,12 @@ textarea[aria-invalid="true"] {
 }
 
 .wizard-steps button.active span {
-  background: var(--lavender);
+  background: var(--primary);
   color: var(--text);
 }
 
 .wizard-steps button.complete span {
-  background: var(--mint-soft);
+  background: var(--success-soft);
 }
 
 .wizard-section {
@@ -1340,15 +1340,15 @@ textarea[aria-invalid="true"] {
 }
 
 .percentage-summary.valid {
-  background: var(--mint-soft);
-  border-color: var(--mint-border);
-  color: var(--mint);
+  background: var(--success-soft);
+  border-color: var(--success-border);
+  color: var(--success);
 }
 
 .percentage-summary.invalid {
-  background: var(--amber-soft);
-  border-color: var(--amber-border);
-  color: var(--amber);
+  background: var(--warning-soft);
+  border-color: var(--warning-border);
+  color: var(--warning);
 }
 
 .review-grid {
@@ -1413,7 +1413,7 @@ textarea[aria-invalid="true"] {
 }
 
 .text-button.danger {
-  color: var(--rose);
+  color: var(--danger);
 }
 
 .detail-layout {
@@ -1469,7 +1469,7 @@ textarea[aria-invalid="true"] {
 }
 
 .progress-track span {
-  background: linear-gradient(90deg, var(--lavender), var(--mint));
+  background: linear-gradient(90deg, var(--primary), var(--success));
   display: block;
   height: 100%;
   transition: width 0.3s ease;
@@ -1488,9 +1488,9 @@ textarea[aria-invalid="true"] {
 
 .timeline-dot {
   align-items: center;
-  background: var(--lavender-soft);
+  background: var(--primary-soft);
   border-radius: 50%;
-  color: var(--lavender);
+  color: var(--primary);
   display: flex;
   font-weight: 800;
   height: 2rem;
@@ -1499,8 +1499,8 @@ textarea[aria-invalid="true"] {
 }
 
 .state-2 .timeline-dot {
-  background: var(--mint-soft);
-  color: var(--mint);
+  background: var(--success-soft);
+  color: var(--success);
 }
 
 .milestone-content {
@@ -1544,7 +1544,7 @@ textarea[aria-invalid="true"] {
 
 .auth-shell {
   align-items: center;
-  background: linear-gradient(135deg, var(--text), var(--lavender));
+  background: linear-gradient(135deg, var(--text), var(--primary));
   display: flex;
   min-height: 100vh;
   padding: 2rem;
@@ -1604,10 +1604,10 @@ textarea[aria-invalid="true"] {
 
 .registration-complete-banner {
   align-items: center;
-  background: var(--mint-soft);
-  border: 1px solid var(--mint-border);
+  background: var(--success-soft);
+  border: 1px solid var(--success-border);
   border-radius: 0.5rem;
-  color: var(--mint);
+  color: var(--success);
   display: flex;
   gap: 0.85rem;
   padding: 1rem;
@@ -1615,7 +1615,7 @@ textarea[aria-invalid="true"] {
 
 .registration-check {
   align-items: center;
-  background: var(--mint);
+  background: var(--success);
   border-radius: 50%;
   color: var(--text);
   display: inline-flex;
@@ -1633,7 +1633,7 @@ textarea[aria-invalid="true"] {
 }
 
 .registration-complete-banner p {
-  color: var(--mint);
+  color: var(--success);
   font-size: 0.9rem;
   margin: 0;
 }
@@ -1681,9 +1681,9 @@ textarea[aria-invalid="true"] {
 }
 
 .registration-role-badge {
-  background: var(--lavender-soft);
+  background: var(--primary-soft);
   border-radius: 999px;
-  color: var(--lavender);
+  color: var(--primary);
   display: inline-block;
   font-size: 0.78rem;
   padding: 0.3rem 0.65rem;
@@ -1743,9 +1743,9 @@ textarea[aria-invalid="true"] {
 
 .wallet-identicon {
   align-items: center;
-  background: var(--lavender-soft);
+  background: var(--primary-soft);
   border-radius: 50%;
-  color: var(--lavender);
+  color: var(--primary);
   display: flex;
   font-size: 1.1rem;
   font-weight: 800;
@@ -1791,7 +1791,7 @@ textarea[aria-invalid="true"] {
 
 .wallet-detail-choice:hover,
 .wallet-detail-choice.current {
-  border-color: var(--lavender);
+  border-color: var(--primary);
   box-shadow: 0 0 0 2px rgb(37 99 235 / 10%);
 }
 
@@ -1827,8 +1827,8 @@ button.role-card {
 
 .role-card:hover,
 .role-card.selected {
-  background: var(--lavender-soft);
-  border-color: var(--lavender);
+  background: var(--primary-soft);
+  border-color: var(--primary);
 }
 
 .role-card small {
@@ -1837,9 +1837,9 @@ button.role-card {
 
 .role-icon {
   align-items: center;
-  background: var(--lavender-soft);
+  background: var(--primary-soft);
   border-radius: 50%;
-  color: var(--lavender);
+  color: var(--primary);
   display: flex;
   font-weight: 800;
   height: 2rem;
@@ -1848,8 +1848,8 @@ button.role-card {
 }
 
 .role-card:nth-child(2) .role-icon {
-  background: var(--mint-soft);
-  color: var(--mint);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 .history-agreement-list {
@@ -1870,7 +1870,7 @@ button.role-card {
 }
 
 .history-agreement-card:hover {
-  border-color: var(--lavender-border);
+  border-color: var(--primary-border);
   box-shadow: 0 10px 24px rgb(37 99 235 / 10%);
   transform: translateY(-1px);
 }
@@ -1919,7 +1919,7 @@ button.role-card {
 }
 
 .history-agreement-footer strong {
-  color: var(--lavender);
+  color: var(--primary);
 }
 
 .wallet-control {
@@ -1931,7 +1931,7 @@ button.role-card {
 
 .wallet-error {
   margin: 0;
-  color: var(--rose);
+  color: var(--danger);
   font-size: 0.85rem;
   max-width: 240px;
   text-align: right;

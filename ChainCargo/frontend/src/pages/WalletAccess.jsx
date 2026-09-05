@@ -73,7 +73,7 @@ function WalletAccess() {
           <button className="btn btn-secondary auth-back-button" disabled={isConnecting} onClick={backToHome} type="button">
             ← Back to Home
           </button>
-          <Link className="brand dark" to="/">ChainCargo</Link>
+          <Link className="brand dark" to="/"><img src="/favicon.svg" alt="" width="30" height="30" aria-hidden="true" />ChainCargo</Link>
         </div>
         <span className="eyebrow">Wallet access</span>
         <h2>

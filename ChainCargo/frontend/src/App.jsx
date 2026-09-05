@@ -52,11 +52,14 @@ function AppLayout() {
     };
   }, [navigationOpen]);
   return (
-    <div className="app-shell">
-      <Navbar />
+    <div className={`app-shell ${navigationOpen ? 'navigation-open' : ''}`}>
+      <a href="#main-content" className="skip-link">Skip to content</a>
       <AgreementRejectionNotice />
-      <div className="app-content">
-        <main className="main-content">
+      {navigationOpen && <button className="sidebar-backdrop" aria-label="Close navigation" onClick={() => setNavigationOpen(false)} type="button" />}
+      <Sidebar onClose={() => setNavigationOpen(false)} />
+      <div className="workspace-body" inert={navigationOpen}>
+        <Navbar navigationOpen={navigationOpen} onOpenNavigation={() => setNavigationOpen(true)} />
+        <main className="main-content" id="main-content" tabIndex={-1}>
           <Outlet />
         </main>
         <footer className="workspace-footer"><span>ChainCargo <span className="footer-dot">·</span> Built on trust. Verified on-chain.</span><span>Ethereum logistics workspace</span></footer>
