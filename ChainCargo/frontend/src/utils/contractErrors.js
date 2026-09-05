@@ -31,6 +31,7 @@ const errorMessages = {
   NoPendingExtension: 'There is no pending deadline extension request for this milestone.',
   AcceptancePeriodClosed: 'The Carrier response deadline has passed. The Shipper may now cancel and recover the escrow.',
   NoEvidenceResubmissionWindow: 'There is no time available for replacement evidence before the next milestone or Final Delivery Deadline.',
+  NoActiveDispute: 'This agreement does not have an active dispute to resolve.',
 };
 
 function findRevertData(error) {
@@ -72,8 +73,6 @@ function describeCustomError(parsed) {
       return `The Shipper can cancel this unaccepted agreement after ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
     case 'ExtensionRequestTooEarly':
       return `The Carrier can request a 24-hour extension starting at ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
-    case 'DisputeNotAvailableBeforeFinalDeadline':
-      return `Only the Shipper can open a dispute after ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
     case 'InvalidExtensionDeadline':
       return 'A 24-hour extension would reach or pass the next milestone or Final Delivery deadline.';
     case 'InputTooLong':

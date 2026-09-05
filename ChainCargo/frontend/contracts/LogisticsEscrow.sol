@@ -65,6 +65,15 @@ contract LogisticsEscrow {
         bool extensionApproved;
     }
 
+    struct DisputeRequest {
+        uint256 milestoneIndex;
+        uint64 openedAt;
+        address openedBy;
+        string reason;
+        bool active;
+        bool reviewTimeout;
+    }
+
     error Unauthorized();
     error InvalidInput();
     error InvalidRole();
@@ -92,7 +101,6 @@ contract LogisticsEscrow {
     error InputTooLong(uint256 providedLength, uint256 maximumLength);
     error InvalidProofURI();
     error DeadlineRefundAvailable();
-    error DisputeNotAvailableBeforeFinalDeadline(uint64 availableAt);
     error DuplicateAgreementName();
     error FixedMilestonesRequired();
     error EvidenceMissing();
@@ -107,9 +115,10 @@ contract LogisticsEscrow {
     error AcceptancePeriodActive(uint64 availableAt);
     error AcceptancePeriodClosed();
     error NoEvidenceResubmissionWindow();
+    error NoActiveDispute();
 
     address public immutable arbitrator;
-    uint256 public constant CONTRACT_VERSION = 10;
+    uint256 public constant CONTRACT_VERSION = 12;
     string public constant EVIDENCE_URI_SCHEME = "supabase://";
     uint256 public constant MAX_MILESTONES = 2;
     uint256 public constant REPUTATION_POINTS_PER_MILESTONE = 10;
@@ -138,6 +147,8 @@ contract LogisticsEscrow {
     mapping(address => uint256) public carrierReputation;
     mapping(uint256 => mapping(uint256 => string)) private extensionReasons;
     mapping(uint256 => uint64) public carrierAcceptanceDeadline;
+    mapping(uint256 => DisputeRequest) private disputeRequests;
+    mapping(uint256 => string) public agreementRejectionReason;
 
     uint256 private unlocked = 1;
 
@@ -158,7 +169,8 @@ contract LogisticsEscrow {
     event AgreementRejected(
         uint256 indexed agreementId,
         address indexed carrier,
-        uint256 refundAmount
+        uint256 refundAmount,
+        string reason
     );
     event UnacceptedAgreementCancelled(
         uint256 indexed agreementId,
@@ -231,6 +243,12 @@ contract LogisticsEscrow {
         uint256 indexed agreementId,
         uint256 shipperAmount,
         uint256 carrierAmount
+    );
+    event DisputeContinued(
+        uint256 indexed agreementId,
+        uint256 indexed milestoneIndex,
+        bool evidenceApproved,
+        uint64 pausedSeconds
     );
 
     modifier nonReentrant() {
@@ -410,17 +428,29 @@ contract LogisticsEscrow {
     }
 
     function rejectAgreement(
-        uint256 agreementId
+        uint256 agreementId,
+        string calldata reason
     ) external agreementExists(agreementId) nonReentrant {
         Agreement storage agreement = agreements[agreementId];
         if (agreement.carrier != msg.sender) revert Unauthorized();
         if (agreement.status != AgreementStatus.PendingCarrierAcceptance) {
             revert InvalidStatus();
         }
+        bytes memory reasonBytes = bytes(reason);
+        if (reasonBytes.length == 0 || reasonBytes.length > MAX_DISPUTE_REASON_LENGTH) revert InvalidInput();
+        bool hasContent;
+        for (uint256 i; i < reasonBytes.length; ++i) {
+            if (uint8(reasonBytes[i]) > 32) {
+                hasContent = true;
+                break;
+            }
+        }
+        if (!hasContent) revert InvalidInput();
+        agreementRejectionReason[agreementId] = reason;
         uint256 refund = agreement.remainingAmount;
         agreement.remainingAmount = 0;
         agreement.status = AgreementStatus.Rejected;
-        emit AgreementRejected(agreementId, msg.sender, refund);
+        emit AgreementRejected(agreementId, msg.sender, refund, reason);
         _sendValue(agreement.shipper, refund);
     }
 
@@ -469,15 +499,24 @@ contract LogisticsEscrow {
     ) private {
         Agreement storage agreement = agreements[agreementId];
         if (agreement.carrier != msg.sender) revert Unauthorized();
-        if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
+        DisputeRequest storage dispute = disputeRequests[agreementId];
+        bool activeWorkflow = agreement.status == AgreementStatus.Active;
+        bool futureEvidenceDuringDispute = agreement.status == AgreementStatus.Disputed &&
+            dispute.active &&
+            milestoneIndex > dispute.milestoneIndex;
+        if (!activeWorkflow && !futureEvidenceDuringDispute) revert InvalidStatus();
         if (milestoneIndex >= milestones[agreementId].length)
             revert InvalidMilestone();
-        if (block.timestamp > agreement.deadline) revert DeadlinePassed();
+        uint256 pausedSeconds = agreement.status == AgreementStatus.Disputed
+            ? block.timestamp - dispute.openedAt
+            : 0;
+        if (block.timestamp > uint256(agreement.deadline) + pausedSeconds)
+            revert DeadlinePassed();
 
         Milestone storage milestone = milestones[agreementId][milestoneIndex];
         if (
             milestone.state != MilestoneState.Pending ||
-            block.timestamp > milestone.dueAt ||
+            block.timestamp > uint256(milestone.dueAt) + pausedSeconds ||
             evidenceHash == bytes32(0)
         ) revert InvalidMilestone();
 
@@ -683,11 +722,10 @@ contract LogisticsEscrow {
             uint64(EVIDENCE_REVIEW_PERIOD);
         if (block.timestamp < availableAt)
             revert ReviewPeriodActive(availableAt);
-        agreement.status = AgreementStatus.Disputed;
         string
             memory reason = "Shipper did not review submitted evidence within 1 hour.";
+        _openDispute(agreementId, milestoneIndex, msg.sender, reason, true);
         emit ArbitrationRequested(agreementId, milestoneIndex, msg.sender);
-        emit DisputeOpened(agreementId, msg.sender, reason);
     }
 
     function _confirmMilestone(
@@ -803,21 +841,65 @@ contract LogisticsEscrow {
         _sendValue(agreement.shipper, refund);
     }
 
-    function openDispute(
+    /// @notice Either agreement participant may stop the active workflow and ask the Arbitrator
+    /// to resolve the remaining escrow. The reason is emitted for both participants to review.
+    function requestDispute(
         uint256 agreementId,
         string calldata reason
     ) external agreementExists(agreementId) {
         Agreement storage agreement = agreements[agreementId];
-        if (msg.sender != agreement.shipper) revert Unauthorized();
+        if (msg.sender != agreement.shipper && msg.sender != agreement.carrier) {
+            revert Unauthorized();
+        }
         if (agreement.status != AgreementStatus.Active) revert InvalidStatus();
         if (bytes(reason).length == 0) revert InvalidInput();
         _requireMaximumLength(reason, MAX_DISPUTE_REASON_LENGTH);
-        if (block.timestamp <= agreement.deadline) {
-            revert DisputeNotAvailableBeforeFinalDeadline(agreement.deadline + 1);
-        }
 
-        agreement.status = AgreementStatus.Disputed;
-        emit DisputeOpened(agreementId, msg.sender, reason);
+        _openDispute(
+            agreementId,
+            agreement.nextMilestone,
+            msg.sender,
+            reason,
+            false
+        );
+    }
+
+    function getDisputeRequest(
+        uint256 agreementId
+    ) external view agreementExists(agreementId) returns (DisputeRequest memory) {
+        return disputeRequests[agreementId];
+    }
+
+    function resolveDisputeAndContinue(
+        uint256 agreementId,
+        bool approveEvidence
+    ) external agreementExists(agreementId) nonReentrant {
+        if (msg.sender != arbitrator || profiles[msg.sender].role != Role.Arbitrator) {
+            revert Unauthorized();
+        }
+        Agreement storage agreement = agreements[agreementId];
+        DisputeRequest storage dispute = disputeRequests[agreementId];
+        if (agreement.status != AgreementStatus.Disputed || !dispute.active) {
+            revert NoActiveDispute();
+        }
+        uint256 milestoneIndex = dispute.milestoneIndex;
+        uint64 pausedSeconds = uint64(block.timestamp - dispute.openedAt);
+        _restoreDisputeTime(agreementId, milestoneIndex, pausedSeconds);
+        dispute.active = false;
+        agreement.status = AgreementStatus.Active;
+
+        if (approveEvidence) {
+            Milestone storage milestone = milestones[agreementId][milestoneIndex];
+            _confirmMilestone(agreementId, milestoneIndex, milestone.proofHash, false);
+        } else {
+            _clearEvidenceForRevision(agreementId, milestoneIndex);
+        }
+        emit DisputeContinued(
+            agreementId,
+            milestoneIndex,
+            approveEvidence,
+            pausedSeconds
+        );
     }
 
     function resolveDispute(
@@ -834,6 +916,7 @@ contract LogisticsEscrow {
         if (agreement.status != AgreementStatus.Disputed)
             revert InvalidStatus();
         if (shipperAmount > agreement.remainingAmount) revert InvalidInput();
+        disputeRequests[agreementId].active = false;
 
         uint256 carrierAmount = agreement.remainingAmount - shipperAmount;
         agreement.remainingAmount = 0;
@@ -842,6 +925,56 @@ contract LogisticsEscrow {
 
         if (shipperAmount != 0) _sendValue(agreement.shipper, shipperAmount);
         if (carrierAmount != 0) _sendValue(agreement.carrier, carrierAmount);
+    }
+
+    function _openDispute(
+        uint256 agreementId,
+        uint256 milestoneIndex,
+        address openedBy,
+        string memory reason,
+        bool reviewTimeout
+    ) private {
+        agreements[agreementId].status = AgreementStatus.Disputed;
+        disputeRequests[agreementId] = DisputeRequest(
+            milestoneIndex,
+            uint64(block.timestamp),
+            openedBy,
+            reason,
+            true,
+            reviewTimeout
+        );
+        emit DisputeOpened(agreementId, openedBy, reason);
+    }
+
+    function _restoreDisputeTime(
+        uint256 agreementId,
+        uint256 milestoneIndex,
+        uint64 pausedSeconds
+    ) private {
+        Agreement storage agreement = agreements[agreementId];
+        agreement.deadline += pausedSeconds;
+        Milestone[] storage agreementMilestones = milestones[agreementId];
+        for (uint256 i = milestoneIndex; i < agreementMilestones.length; ++i) {
+            agreementMilestones[i].dueAt += pausedSeconds;
+        }
+    }
+
+    function _clearEvidenceForRevision(
+        uint256 agreementId,
+        uint256 milestoneIndex
+    ) private {
+        Milestone storage milestone = milestones[agreementId][milestoneIndex];
+        milestone.proofHash = bytes32(0);
+        milestone.proofURI = "";
+        milestone.submittedAt = 0;
+        milestone.state = MilestoneState.Pending;
+        milestone.extensionPending = false;
+        emit EvidenceRevisionRequested(
+            agreementId,
+            milestoneIndex,
+            arbitrator,
+            milestone.dueAt
+        );
     }
 
     function getAgreement(

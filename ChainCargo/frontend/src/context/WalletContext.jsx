@@ -66,6 +66,7 @@ const getNetworkName = (chainId) => {
 
 export function WalletProvider({ children }) {
   const connectionConfirmedRef = useRef(false);
+  const connectionPendingRef = useRef(false);
   const accountsChangedTimerRef = useRef(null);
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
@@ -84,6 +85,7 @@ export function WalletProvider({ children }) {
   };
 
   const connectWallet = useCallback(async () => {
+    if (connectionPendingRef.current) return;
     if (typeof window === 'undefined' || !window.ethereum) {
       setError('MetaMask is not installed. Please install MetaMask and refresh the page.');
       return;
@@ -95,9 +97,19 @@ export function WalletProvider({ children }) {
     }
 
     try {
+      connectionPendingRef.current = true;
+      connectionConfirmedRef.current = false;
+      window.clearTimeout(accountsChangedTimerRef.current);
+      setAuthorizedAccounts([]);
+      setAccount(null);
+      rememberSelectedAccount(null);
+      rememberWalletSession(null);
+      setWalletSession(null);
       setIsConnecting(true);
       setError('');
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const networkId = await window.ethereum.request({ method: 'eth_chainId' });
+      setChainId(networkId);
       setAuthorizedAccounts(accounts || []);
       if (accounts && accounts[0]) {
         connectionConfirmedRef.current = true;
@@ -109,12 +121,11 @@ export function WalletProvider({ children }) {
         setAccount(null);
       }
 
-      const networkId = await window.ethereum.request({ method: 'eth_chainId' });
-      setChainId(networkId);
     } catch (err) {
       console.error(err);
       setError(err.message || 'Failed to connect wallet.');
     } finally {
+      connectionPendingRef.current = false;
       setIsConnecting(false);
     }
   }, []);
@@ -277,7 +288,17 @@ export function WalletProvider({ children }) {
   }, []);
 
   const disconnectWallet = useCallback(async () => {
-    if (typeof window === 'undefined' || !window.ethereum) return;
+    if (typeof window === 'undefined') return;
+    connectionConfirmedRef.current = false;
+    window.clearTimeout(accountsChangedTimerRef.current);
+    rememberSelectedAccount(null);
+    setAuthorizedAccounts([]);
+    setAccount(null);
+    rememberWalletSession(null);
+    setWalletSession(null);
+    setShowAccountSwitcher(false);
+    setShowAccountPermissionHelp(false);
+    if (!window.ethereum) return;
     try {
       setIsConnecting(true);
       setError('');
@@ -285,13 +306,6 @@ export function WalletProvider({ children }) {
         method: 'wallet_revokePermissions',
         params: [{ eth_accounts: {} }],
       });
-      connectionConfirmedRef.current = false;
-      rememberSelectedAccount(null);
-      setAuthorizedAccounts([]);
-      setAccount(null);
-      rememberWalletSession(null);
-      setWalletSession(null);
-      setShowAccountSwitcher(false);
     } catch (disconnectError) {
       console.error(disconnectError);
       if (disconnectError?.code !== 4001) {
@@ -362,6 +376,7 @@ export function WalletProvider({ children }) {
     };
 
     const handleAccountsChanged = () => {
+      if (connectionPendingRef.current) return;
       window.clearTimeout(accountsChangedTimerRef.current);
       accountsChangedTimerRef.current = window.setTimeout(async () => {
         try {

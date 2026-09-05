@@ -20,11 +20,6 @@ import {
   isRefundButtonAvailable,
 } from '../utils/deadlineAlerts';
 import { showActionResult } from '../utils/actionResult';
-import {
-  decodeEscrowEvent,
-  loadContractLogsInChunks,
-  selectHistoryStartBlock,
-} from '../utils/historyEvents';
 
 const shortAddress = (address) => `${address.slice(0, 6)}…${address.slice(-4)}`;
 const formatDate = (timestamp) => new Date(timestamp * 1000).toLocaleString();
@@ -32,7 +27,7 @@ const formatDate = (timestamp) => new Date(timestamp * 1000).toLocaleString();
 function AgreementDetail() {
   const { id } = useParams();
   const { account } = useWallet();
-  const { address, deployment, getReadContract, getWriteContract, isConfigured, refreshKey, waitForTransaction } =
+  const { address, getReadContract, getWriteContract, isConfigured, refreshKey, waitForTransaction } =
     useContract();
   const evidenceFileInputRef = useRef(null);
   const [agreement, setAgreement] = useState(null);
@@ -53,7 +48,10 @@ function AgreementDetail() {
   const [busyAction, setBusyAction] = useState('');
   const [evidenceDecision, setEvidenceDecision] = useState(null);
   const [agreementDecision, setAgreementDecision] = useState(null);
-  const [arbitrationDecision, setArbitrationDecision] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const rejectionReasonValid = rejectionReason.trim().length > 0
+    && new TextEncoder().encode(rejectionReason.trim()).length <= 1000;
+  const [disputeConfirmationOpen, setDisputeConfirmationOpen] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [nowSeconds, setNowSeconds] = useState(0);
@@ -78,6 +76,8 @@ function AgreementDetail() {
       setAgreement({
         ...normalizeAgreement(id, rawAgreement),
         carrierAcceptanceDeadline: Number(acceptanceDeadline),
+        rejectionReason: Number(rawAgreement.status) === 6
+          ? await contract.agreementRejectionReason(id) : '',
       });
       setMilestones(
         rawMilestones.map((milestone, index) => ({
@@ -125,52 +125,20 @@ function AgreementDetail() {
       setDisputeLookupError('');
       if (Number(rawAgreement.status) === 3) {
         try {
-          const provider = contract.runner;
-          const latestBlock = await provider.getBlockNumber();
-          const network = await provider.getNetwork();
-          const fromBlock = await selectHistoryStartBlock({
-            provider,
-            address,
-            chainId: Number(network.chainId),
-            deployment,
-            latestBlock,
-          });
-          const loadLatestEvent = async (filter, eventName) => {
-            const logs = await loadContractLogsInChunks({
-              provider,
-              address,
-              fromBlock,
-              toBlock: latestBlock,
-              topics: await filter.getTopicFilter(),
-            });
-            return logs
-              .map((log) => decodeEscrowEvent(contract.interface, log))
-              .filter((event) => event?.name === eventName)
-              .at(-1);
-          };
-          const [opened, reviewTimeout] = await Promise.all([
-            loadLatestEvent(contract.filters.DisputeOpened(id), 'DisputeOpened'),
-            loadLatestEvent(contract.filters.ArbitrationRequested(id), 'ArbitrationRequested'),
-          ]);
-          if (reviewTimeout) {
+          const dispute = await contract.getDisputeRequest(id);
+          if (dispute.active) {
             setDisputeInfo({
-              openedBy: reviewTimeout.args.carrier,
-              reason: 'The Shipper did not approve or reject the submitted evidence within the one-hour review period.',
-              type: 'review-timeout',
-            });
-          } else if (opened) {
-            setDisputeInfo({
-              openedBy: opened.args.openedBy,
-              reason: opened.args.reason,
-              type: 'shipper-dispute',
+              milestoneIndex: Number(dispute.milestoneIndex),
+              openedAt: Number(dispute.openedAt),
+              openedBy: dispute.openedBy,
+              reason: dispute.reason,
+              type: dispute.reviewTimeout ? 'review-timeout' : 'participant-dispute',
             });
           } else {
-            setDisputeLookupError('No dispute or arbitration request event was found for this agreement.');
+            setDisputeLookupError('No active dispute record was found for this agreement.');
           }
         } catch {
-          setDisputeLookupError(
-            'The dispute event could not be loaded from the configured RPC. No reason will be assumed.',
-          );
+          setDisputeLookupError('The on-chain dispute details could not be loaded.');
         }
       }
     } catch (loadError) {
@@ -178,7 +146,7 @@ function AgreementDetail() {
     } finally {
       setLoading(false);
     }
-  }, [address, deployment, getReadContract, id, isConfigured]);
+  }, [getReadContract, id, isConfigured]);
 
   useEffect(() => {
     load();
@@ -270,6 +238,7 @@ function AgreementDetail() {
   const confirmEvidenceDecision = () => {
     const decision = evidenceDecision;
     if (!decision) return;
+    if (decision === 'reject' && !rejectionReasonValid) return;
     setEvidenceDecision(null);
     if (decision.type === 'confirm') {
       transact(
@@ -295,21 +264,17 @@ function AgreementDetail() {
     if (decision === 'accept') {
       transact('accept-agreement', (contract) => contract.acceptAgreement(id));
     } else if (decision === 'reject') {
-      transact('reject-agreement', (contract) => contract.rejectAgreement(id));
+      transact('reject-agreement', (contract) => contract.rejectAgreement(id, rejectionReason.trim()));
     } else {
       transact('cancel-unaccepted', (contract) => contract.cancelUnacceptedAgreement(id));
     }
   };
 
-  const confirmArbitrationDecision = () => {
-    const recipient = arbitrationDecision;
-    if (!recipient) return;
-    setArbitrationDecision(null);
-    const shipperAmount = recipient === 'shipper' ? agreement.remainingAmount : 0n;
-    transact(
-      `resolve-${recipient}`,
-      (contract) => contract.resolveDispute(id, shipperAmount),
-    );
+  const confirmDisputeRequest = () => {
+    if (!disputeReason.trim()) return;
+    const reason = disputeReason.trim();
+    setDisputeConfirmationOpen(false);
+    transact('dispute', (contract) => contract.requestDispute(id, reason));
   };
 
   const selectEvidenceFile = (file) => {
@@ -412,7 +377,6 @@ function AgreementDetail() {
     && nowSeconds > agreement.carrierAcceptanceDeadline;
   const isFinalEvidenceConfirmation = evidenceDecision?.type === 'confirm'
     && evidenceDecision.milestone.index === milestones.length - 1;
-  const isReviewTimeoutArbitration = disputeInfo?.type === 'review-timeout';
   let nextStep = {
     title: 'This agreement is closed',
     detail: `Final status: ${agreement.statusLabel}. Review the immutable milestones and transaction history.`,
@@ -475,6 +439,11 @@ function AgreementDetail() {
           <div>
             <span className="eyebrow">Agreement #{id}</span>
             <h2>{agreement.title}</h2>
+            {agreement.rejectionReason && (
+              <div className="alert error" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                <strong>Carrier rejection reason: </strong>{agreement.rejectionReason}
+              </div>
+            )}
           </div>
           <span className={`badge status-${agreement.statusLabel.toLowerCase()}`}>
             {agreement.statusLabel}
@@ -502,6 +471,31 @@ function AgreementDetail() {
           )}
           <div><small>Final deadline</small><strong>{formatDate(agreement.deadline)}</strong></div>
         </div>
+        {agreement.status === 3 && (
+          <div className="dispute-status-banner" role="status">
+            <span className="dispute-status-mark" aria-hidden="true">!</span>
+            <div>
+              <strong>Dispute requested</strong>
+              <p>The disputed milestone is paused while the Carrier may continue preparing later evidence.</p>
+            </div>
+          </div>
+        )}
+        {agreement.status === 3 && !isArbitrator && disputeInfo && (
+          <div className="dispute-participant-details">
+            <div>
+              <small>Requested by</small>
+              <strong title={disputeInfo.openedBy}>{shortAddress(disputeInfo.openedBy)}</strong>
+            </div>
+            <div>
+              <small>Milestone</small>
+              <strong>{disputeInfo.milestoneIndex + 1}</strong>
+            </div>
+            <div className="dispute-reason-row">
+              <small>Details for Arbitrator</small>
+              <p>{disputeInfo.reason}</p>
+            </div>
+          </div>
+        )}
         {agreement.status === 0 && (
           <div className={`deadline-indicator deadline-${deadlineState.level}`} aria-live="polite">
             <span className="eyebrow">
@@ -569,37 +563,50 @@ function AgreementDetail() {
           </div>
         )}
 
-        {agreement.status === 0 && isShipper && (refundAvailable || nowSeconds > agreement.deadline) && (
+        {agreement.status === 0 && isShipper && refundAvailable && (
           <div className="action-panel">
-            <h3>Agreement actions</h3>
-            {refundAvailable && isShipper && (
-              <>
-                <div className="notice">
-                  The current milestone deadline passed without evidence. Only the original Shipper can refund the remaining escrow.
-                </div>
-                <button
-                  className="btn btn-danger"
-                  disabled={Boolean(busyAction)}
-                  onClick={() => transact('refund', (contract) => contract.claimRefundAfterDeadline(id))}
-                >
-                  {busyAction === 'refund' ? 'Refunding…' : 'Refund remaining escrow'}
-                </button>
-              </>
-            )}
-            {nowSeconds > agreement.deadline && <div className="inline-form">
-              <input
+            <h3>Deadline refund</h3>
+            <div className="notice">
+              The current milestone deadline passed without evidence. Only the original Shipper can refund the remaining escrow.
+            </div>
+            <button
+              className="btn btn-danger"
+              disabled={Boolean(busyAction)}
+              onClick={() => transact('refund', (contract) => contract.claimRefundAfterDeadline(id))}
+            >
+              {busyAction === 'refund' ? 'Refunding…' : 'Refund remaining escrow'}
+            </button>
+          </div>
+        )}
+
+        {agreement.status === 0 && (isShipper || isCarrier) && (
+          <div className="action-panel dispute-request-panel">
+            <div className="dispute-request-heading">
+              <span className="dispute-status-mark" aria-hidden="true">!</span>
+              <div>
+                <h3>Request Arbitrator action</h3>
+                <p>Explain the issue clearly. Submitting this request pauses the agreement workflow.</p>
+              </div>
+            </div>
+            <label>
+              Dispute details
+              <textarea
+                maxLength="1000"
+                placeholder="Describe what happened and what outcome you are requesting"
                 value={disputeReason}
                 onChange={(event) => setDisputeReason(event.target.value)}
-                placeholder="Reason for dispute"
               />
+            </label>
+            <div className="dispute-request-actions">
               <button
-                className="btn btn-secondary"
-                disabled={Boolean(busyAction) || !disputeReason}
-                onClick={() => transact('dispute', (contract) => contract.openDispute(id, disputeReason))}
+                className="btn btn-danger"
+                disabled={Boolean(busyAction) || !disputeReason.trim()}
+                onClick={() => setDisputeConfirmationOpen(true)}
+                type="button"
               >
-                Open dispute
+                {busyAction === 'dispute' ? 'Submitting dispute…' : 'Request dispute'}
               </button>
-            </div>}
+            </div>
           </div>
         )}
 
@@ -638,29 +645,34 @@ function AgreementDetail() {
                 <code>{currentMilestone.proofURI}</code>
               </div>
             )}
-            {isReviewTimeoutArbitration ? (
-              <>
-                <p>Choose who should receive the full remaining {agreement.remainingEth} ETH escrow based on the submitted evidence.</p>
-                <div className="wizard-actions">
-                  <button className="btn btn-secondary" disabled={Boolean(busyAction)} onClick={() => setArbitrationDecision('shipper')} type="button">
-                    Pay Shipper · {agreement.remainingEth} ETH
-                  </button>
-                  <button className="btn btn-primary" disabled={Boolean(busyAction)} onClick={() => setArbitrationDecision('carrier')} type="button">
-                    Pay Carrier · {agreement.remainingEth} ETH
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p>Enter the portion of the remaining {agreement.remainingEth} ETH to return to the shipper. The carrier receives the rest.</p>
-                <div className="inline-form">
-                  <input type="number" min="0" step="any" value={resolutionEth} onChange={(event) => setResolutionEth(event.target.value)} placeholder="Shipper share (ETH)" />
-                  <button className="btn btn-primary" disabled={Boolean(busyAction) || resolutionEth === ''} onClick={() => transact('resolve', (contract) => contract.resolveDispute(id, ethers.parseEther(resolutionEth)))}>
-                    Resolve dispute
-                  </button>
-                </div>
-              </>
-            )}
+            <h4>Continue the agreement</h4>
+            <p>All remaining deadlines will be extended by the exact time this dispute was open.</p>
+            <div className="wizard-actions">
+              <button
+                className="btn btn-secondary"
+                disabled={Boolean(busyAction)}
+                onClick={() => transact('continue-revision', (contract) => contract.resolveDisputeAndContinue(id, false))}
+                type="button"
+              >
+                Request new evidence
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={Boolean(busyAction) || currentMilestone?.proofHash === ethers.ZeroHash}
+                onClick={() => transact('continue-payment', (contract) => contract.resolveDisputeAndContinue(id, true))}
+                type="button"
+              >
+                Approve evidence & pay
+              </button>
+            </div>
+            <h4>End the agreement</h4>
+            <p>Enter the remaining amount to return to the Shipper. The Carrier receives the balance and the agreement closes.</p>
+            <div className="inline-form">
+              <input type="number" min="0" max={agreement.remainingEth} step="any" value={resolutionEth} onChange={(event) => setResolutionEth(event.target.value)} placeholder="Shipper share (ETH)" />
+              <button className="btn btn-danger" disabled={Boolean(busyAction) || resolutionEth === ''} onClick={() => transact('resolve', (contract) => contract.resolveDispute(id, ethers.parseEther(resolutionEth)))}>
+                Cancel & split escrow
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -676,12 +688,16 @@ function AgreementDetail() {
         <div className="timeline">
           {milestones.map((milestone) => {
             const isCurrent = milestone.index === agreement.nextMilestone && agreement.status === 0;
-            const canSubmitEvidence = agreement.status === 0
+            const disputePausedSeconds = agreement.status === 3 && disputeInfo?.openedAt
+              ? Math.max(0, nowSeconds - disputeInfo.openedAt)
+              : 0;
+            const canSubmitEvidence = (agreement.status === 0
+              || (agreement.status === 3 && milestone.index > agreement.nextMilestone))
               && milestone.state === 0
-              && nowSeconds <= milestone.dueAt
-              && nowSeconds <= agreement.deadline;
-            const milestoneExpired = nowSeconds > milestone.dueAt;
-            const agreementExpired = nowSeconds > agreement.deadline;
+              && nowSeconds <= milestone.dueAt + disputePausedSeconds
+              && nowSeconds <= agreement.deadline + disputePausedSeconds;
+            const milestoneExpired = nowSeconds > milestone.dueAt + disputePausedSeconds;
+            const agreementExpired = nowSeconds > agreement.deadline + disputePausedSeconds;
             const evidenceUrl = getEvidencePublicUrl(milestone.proofURI);
             const evidenceStorageLabel = getEvidenceStorageLabel(milestone.proofURI);
             const verificationForMilestone = verification?.milestoneIndex === milestone.index
@@ -887,7 +903,7 @@ function AgreementDetail() {
                   )}
                   {isCurrent && isShipper && milestone.state === 1 && agreementExpired && (
                     <div className="notice">
-                      This proof was submitted before its deadline. You may still confirm it. After the Final Delivery Deadline, the Shipper may open a dispute if needed.
+                      This proof was submitted before its deadline and remains available for confirmation.
                     </div>
                   )}
                 </div>
@@ -899,20 +915,26 @@ function AgreementDetail() {
           <p className="notice">This agreement is read-only for the connected wallet.</p>
         )}
       </div>
-      {arbitrationDecision && (
+      {disputeConfirmationOpen && (
         <div className="toast-backdrop" role="presentation">
-          <section aria-modal="true" className="toast-popup confirmation-popup" role="alertdialog">
-            <h2>Confirm arbitration payment?</h2>
-            <div className="toast-message">
-              <strong>This decision is final and cannot be undone.</strong>
-              <p>
-                The full remaining {agreement.remainingEth} ETH will be paid to the {arbitrationDecision === 'shipper' ? 'Shipper' : 'Carrier'}.
-              </p>
+          <section
+            aria-describedby="dispute-confirmation-message"
+            aria-labelledby="dispute-confirmation-title"
+            aria-modal="true"
+            className="toast-popup confirmation-popup"
+            role="alertdialog"
+          >
+            <h2 id="dispute-confirmation-title">Request Arbitrator action?</h2>
+            <div className="toast-message" id="dispute-confirmation-message">
+              <strong>This will pause the active agreement.</strong>
+              <p>The Shipper and Carrier will see the dispute status. Only the Arbitrator can resolve the remaining escrow afterward.</p>
             </div>
             <div className="confirmation-actions">
-              <button className="confirmation-cancel" onClick={() => setArbitrationDecision(null)} type="button">Go Back</button>
-              <button autoFocus className="confirmation-confirm" onClick={confirmArbitrationDecision} type="button">
-                Pay {arbitrationDecision === 'shipper' ? 'Shipper' : 'Carrier'}
+              <button className="confirmation-cancel" onClick={() => setDisputeConfirmationOpen(false)} type="button">
+                Cancel
+              </button>
+              <button autoFocus className="confirmation-reject" onClick={confirmDisputeRequest} type="button">
+                Submit dispute
               </button>
             </div>
           </section>
@@ -938,6 +960,27 @@ function AgreementDetail() {
                   : `${agreement.remainingEth} ETH will be returned to the Shipper and the agreement will be closed.`}
               </p>
             </div>
+            {agreementDecision === 'reject' && (
+              <div style={{ textAlign: 'left', marginBottom: 16 }}>
+                <label htmlFor="agreement-rejection-reason">Reason for rejection (required)</label>
+                <textarea
+                  id="agreement-rejection-reason"
+                  value={rejectionReason}
+                  onChange={(event) => setRejectionReason(event.target.value)}
+                  rows={4}
+                  maxLength={1000}
+                  required
+                  aria-describedby="rejection-reason-help"
+                  style={{ width: '100%', boxSizing: 'border-box', marginTop: 8 }}
+                />
+                <small id="rejection-reason-help">
+                  Publicly recorded on-chain. Do not include private information. Maximum 1,000 UTF-8 bytes.
+                </small>
+                {new TextEncoder().encode(rejectionReason.trim()).length > 1000 && (
+                  <p role="alert">The reason is too long. Please shorten it.</p>
+                )}
+              </div>
+            )}
             <div className="confirmation-actions">
               <button className="confirmation-cancel" onClick={() => setAgreementDecision(null)} type="button">
                 Go Back
@@ -945,6 +988,7 @@ function AgreementDetail() {
               <button
                 autoFocus
                 className={agreementDecision === 'accept' ? 'confirmation-confirm' : 'confirmation-reject'}
+                disabled={agreementDecision === 'reject' && !rejectionReasonValid}
                 onClick={confirmAgreementDecision}
                 type="button"
               >

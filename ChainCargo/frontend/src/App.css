@@ -899,6 +899,88 @@ textarea:focus {
   border-left-color: var(--rose);
 }
 
+.dispute-card-alert,
+.dispute-status-banner,
+.dispute-request-heading {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.dispute-card-alert,
+.dispute-status-banner {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 0.5rem;
+  color: #9a3412;
+  padding: 0.75rem;
+}
+
+.dispute-card-alert span:last-child {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.dispute-card-alert small,
+.dispute-status-banner p,
+.dispute-request-heading p {
+  margin: 0;
+}
+
+.dispute-status-mark {
+  align-items: center;
+  background: #ea580c;
+  border-radius: 50%;
+  color: #ffffff;
+  display: inline-flex;
+  flex: 0 0 2rem;
+  font-weight: 800;
+  height: 2rem;
+  justify-content: center;
+}
+
+.dispute-status-banner {
+  margin-top: 1rem;
+}
+
+.dispute-participant-details {
+  background: #fffaf5;
+  border: 1px solid #fed7aa;
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 0.75rem;
+  padding: 1rem;
+}
+
+.dispute-participant-details > div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.dispute-participant-details small {
+  color: #9a3412;
+}
+
+.dispute-reason-row {
+  grid-column: 1 / -1;
+}
+
+.dispute-reason-row p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.dispute-request-heading h3 {
+  margin: 0 0 0.2rem;
+}
+
+.dispute-request-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .deadline-indicator {
   border: 1px solid;
   border-radius: 0.7rem;
@@ -1912,6 +1994,14 @@ button.role-card {
 }
 
 @media (max-width: 600px) {
+  .dispute-participant-details {
+    grid-template-columns: 1fr;
+  }
+
+  .dispute-reason-row {
+    grid-column: auto;
+  }
+
   .main-content,
   .auth-shell {
     padding: 1rem;

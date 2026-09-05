@@ -14,6 +14,7 @@ import History from './pages/History';
 import Profile from './pages/Profile';
 import AccountPermissionDialog from './components/AccountPermissionDialog';
 import NoticeToasts from './components/NoticeToasts';
+import AgreementRejectionNotice from './components/AgreementRejectionNotice';
 import './App.css';
 import './workspace.css';
 
@@ -51,13 +52,11 @@ function AppLayout() {
     };
   }, [navigationOpen]);
   return (
-    <div className={`app-shell ${navigationOpen ? 'navigation-open' : ''}`}>
-      <a href="#main-content" className="skip-link">Skip to content</a>
-      {navigationOpen && <button className="sidebar-backdrop" aria-label="Close navigation" onClick={() => setNavigationOpen(false)} type="button" />}
-      <Sidebar onClose={() => setNavigationOpen(false)} />
-      <div className="workspace-body" inert={navigationOpen}>
-        <Navbar navigationOpen={navigationOpen} onOpenNavigation={() => setNavigationOpen(true)} />
-        <main className="main-content" id="main-content" tabIndex={-1}>
+    <div className="app-shell">
+      <Navbar />
+      <AgreementRejectionNotice />
+      <div className="app-content">
+        <main className="main-content">
           <Outlet />
         </main>
         <footer className="workspace-footer"><span>ChainCargo <span className="footer-dot">·</span> Built on trust. Verified on-chain.</span><span>Ethereum logistics workspace</span></footer>

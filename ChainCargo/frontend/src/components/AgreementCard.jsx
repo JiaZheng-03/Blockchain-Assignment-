@@ -16,11 +16,13 @@ function AgreementCard({
 }) {
   return (
     <article className={`card agreement-card deadline-${deadlineState?.level || 'closed'}`}>
-      <div className="agreement-card-top">
-        <Icon name="box" size={16} />
-        {agreementId !== undefined && <span className="agreement-id">AGREEMENT #{agreementId}</span>}
-        <span className={`badge status-${status?.toLowerCase().replaceAll(' ', '-')}`}>{status}</span>
-      </div>
+      {agreementId !== undefined && <span className="eyebrow">Agreement #{agreementId}</span>}
+      {status === 'Disputed' && (
+        <div className="dispute-card-alert">
+          <span className="dispute-status-mark" aria-hidden="true">!</span>
+          <span><strong>Dispute requested</strong><small>Awaiting Arbitrator action</small></span>
+        </div>
+      )}
       <h3>{title}</h3>
       <div className="agreement-values">
         <span><small>Total escrow</small><strong>{amount}</strong></span>
