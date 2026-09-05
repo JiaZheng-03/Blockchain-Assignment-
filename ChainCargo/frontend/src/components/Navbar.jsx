@@ -23,11 +23,12 @@ export default function Navbar({ onOpenNavigation, navigationOpen }) {
   const navigate = useNavigate();
   const dialogRef = useRef(null);
   const [query, setQuery] = useState('');
-  const { account, isConnected } = useWallet();
+  const { account, isConnected, isAuthenticated } = useWallet();
   const { isCarrier, isArbitrator } = useProfile();
   const { expectedNetworkName, deploymentStatus, address, blockExplorerUrl } = useContract();
   const currentPage = pages.find((page) => page.to === location.pathname)?.name || 'Agreement details';
   const filteredPages = pages.filter((page) => (
+    !(isAuthenticated && (page.to === '/setup' || page.to === '/register')) &&
     !(page.to === '/create-agreement' && (isCarrier || isArbitrator)) &&
     `${page.name} ${page.detail}`.toLowerCase().includes(query.toLowerCase())
   ));

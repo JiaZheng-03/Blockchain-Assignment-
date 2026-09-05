@@ -5,7 +5,7 @@ import { useProfile } from '../hooks/useProfile';
 import Icon from './Icon';
 
 export default function Sidebar({ onClose }) {
-  const { account, formatAddress } = useWallet();
+  const { account, formatAddress, isAuthenticated } = useWallet();
   const { expectedNetworkName, deploymentStatus } = useContract();
   const { isShipper, isCarrier, isArbitrator, profile, roleLabel } = useProfile();
   const groups = [
@@ -17,8 +17,10 @@ export default function Sidebar({ onClose }) {
     ] },
     { label: 'Account', items: [
       ['/profile', 'Wallet & profile', 'wallet'],
-      ['/setup', 'Network setup', 'settings'],
-      ['/register', 'Wallet registration', 'user'],
+      ...(!isAuthenticated ? [
+        ['/setup', 'Network setup', 'settings'],
+        ['/register', 'Wallet registration', 'user'],
+      ] : []),
     ] },
   ];
   return (
