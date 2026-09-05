@@ -152,3 +152,42 @@ The `chain`, `deploy:local`, `seed:local`, `demo:local`, and `dev:local` command
 - The assigned Carrier can request Arbitrator action after submitted evidence has waited one hour without a Shipper decision.
 
 The contract is suitable for coursework and local/test-network demonstrations. A production deployment should additionally receive an independent security audit, decentralized oracle/e-signature policy, private evidence access controls, multisig arbitration, durable storage backups, and comprehensive operational monitoring.
+
+## Frontend agreement notifications
+
+After MetaMask connection and signed login on the configured chain, ChainCargo scans contract logs from the deployment block and checks again every 30 seconds. The scan also refreshes after local transactions. No contract changes, notification backend, or browser notification permission are required. Existing browser deadline alerts and action-result/confirmation dialogs remain available.
+
+Received updates use one dialog with Previous, Next, Mark as Read, Close, and View Agreement. Close and View Agreement leave the updates unread in the bell and suppress another automatic popup for those updates during the current page session. Unread updates can appear again after reloading and logging in; Mark as Read persists across reloads. Read updates remain in the bell. The dialog waits for existing action-result or confirmation popups to close.
+
+Read keys use `chaincargo:notification:<decimal chain ID>:<lowercase contract>:<lowercase wallet>:<transaction hash>:<log index>`. Reads synchronize between tabs through storage events. If localStorage is unavailable, read/dismiss state works in memory for the current page session. Each browser stores its own read state.
+
+Refund availability has no on-chain event. It is detected from an Active agreement with a Pending current milestone when the latest block timestamp exceeds its due date. Its key uses the creation transaction/log plus agreement ID, milestone index, and due date. Observed refund notices are cached locally under `chaincargo:refund-notices:<scope>` to retain them after settlement. Their text directs users to check current agreement status. The separate Refunded event confirms actual payment.
+
+### Manual test
+
+Use your existing configured deployment and registered Shipper, Carrier, and Arbitrator wallets. Start the frontend with `npm run dev:ui` (existing evidence uploads still need their usual service). Use separate browser profiles for simultaneous wallet sessions, or switch accounts and sign in again.
+
+1. Create an agreement as Shipper. Connect and sign in as the assigned Carrier: a new-agreement popup should appear without opening an agreement. An unrelated wallet should receive nothing.
+2. Close it. Open the bell: the update remains unread with its agreement title, message, local date/time, and View Agreement link. Wait over 30 seconds: that same popup should stay closed. Reload and sign in: the unread update can appear again.
+3. Mark the update as read, then reload and sign in again. It stays in the bell as read and does not pop up. View Agreement should navigate to the correct detail page.
+4. Generate several updates while the recipient is signed out. Sign in and exercise Previous/Next, Mark as Read, and Close in the single dialog.
+5. Exercise the recipient matrix below, leaving the recipient dashboard open for at least 30 seconds after each confirmed transaction. Test historical delivery by signing in after transactions as well.
+6. Open an agreement confirmation dialog while another wallet produces an update. The received-event dialog should wait until the confirmation/action-result popup is dismissed. Check keyboard Tab/Shift+Tab and Escape in the notification dialog.
+7. Switch wallet, network, or configured contract: updates/read flags must not leak to the other scope. Mark an update read in another tab of the same browser and scope: the first tab should update too.
+8. Let a Pending milestone deadline pass without evidence, and allow a new block to be mined. Only the Shipper receives refund availability. Submitted evidence or a disputed/closed agreement must not produce it. Claim the refund and verify the paid-refund update and retained availability history.
+
+| Action | Receives update |
+| --- | --- |
+| Create agreement | Assigned Carrier |
+| Accept/reject agreement | Shipper (rejection includes reason) |
+| Submit evidence | Shipper |
+| Request replacement evidence | Carrier |
+| Confirm milestone/release payment | Carrier |
+| Request extension | Shipper |
+| Approve/reject extension | Carrier |
+| Open dispute (including evidence arbitration) | Other participant and Arbitrator; not opener |
+| Arbitrator settles or continues dispute | Shipper and Carrier |
+| Complete agreement | Shipper and Carrier |
+| Pending evidence deadline expires | Shipper |
+
+The first scan depends on your RPC's historical-log availability and agreement history size. Temporary RPC errors appear in the bell and retry automatically; they do not mark notifications read. Polling rescans the most recent 12 blocks to reconcile recent event changes. Tests cover recipient routing, ABI event names, identity isolation, queue deduplication, and refund conditions; interactive MetaMask behavior should be checked using the steps above.

@@ -15,6 +15,7 @@ import Profile from './pages/Profile';
 import AccountPermissionDialog from './components/AccountPermissionDialog';
 import NoticeToasts from './components/NoticeToasts';
 import AgreementRejectionNotice from './components/AgreementRejectionNotice';
+import { NotificationProvider } from './context/NotificationContext';
 import './App.css';
 import './workspace.css';
 
@@ -71,6 +72,7 @@ function AppLayout() {
 function App() {
   return (
     <BrowserRouter>
+      <NotificationProvider>
       <NoticeToasts />
       <AccountPermissionDialog />
       <Routes>
@@ -89,6 +91,7 @@ function App() {
         </Route>
         <Route path="*" element={<Navigate replace to="/" />} />
       </Routes>
+      </NotificationProvider>
     </BrowserRouter>
   );
 }

@@ -17,7 +17,7 @@
     "chain": "hardhat node",
     "compile": "hardhat compile",
     "test:contracts": "hardhat test",
-    "test:ui": "node --test test-ui/agreementValidation.test.js",
+    "test:ui": "node --test test-ui/*.test.js",
     "deploy:sepolia": "hardhat run scripts/deploy.cjs --network sepolia",
     "deploy:local": "hardhat run scripts/deploy.cjs --network localhost",
     "seed:local": "hardhat run scripts/seed-local.cjs --network localhost",

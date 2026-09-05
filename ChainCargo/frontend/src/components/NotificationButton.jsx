@@ -5,16 +5,19 @@ import { useContract } from '../context/ContractContext';
 import { useProfile } from '../hooks/useProfile';
 import { useAgreements } from '../hooks/useAgreements';
 import { getAgreementActionDeadline, getDeadlineState } from '../utils/deadlineAlerts';
+import { useNotifications } from '../context/NotificationContext';
 
 const NOTIFICATION_PREFERENCE_KEY = 'chaincargoDeadlineNotifications';
 const NOTIFICATION_ALERT_PREFIX = 'chaincargoDeadlineAlert';
 
 function NotificationButton() {
   const containerRef = useRef(null);
+  const { notifications, markRead, error } = useNotifications();
+  const unreadCount = notifications.filter((item) => !item.read).length;
   const [open, setOpen] = useState(false);
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
   const [permission, setPermission] = useState('default');
-  const { account } = useWallet();
+  const { account, isAuthenticated } = useWallet();
   const { address: contractAddress } = useContract();
   const { hasAppAccess, isArbitrator } = useProfile();
   const { agreements } = useAgreements({ arbitration: isArbitrator });
@@ -113,7 +116,7 @@ function NotificationButton() {
     }
   }
 
-  if (!account || !hasAppAccess) return null;
+  if (!account || !isAuthenticated || !hasAppAccess) return null;
 
   return (
     <div className="notification-menu" ref={containerRef}>
@@ -127,16 +130,30 @@ function NotificationButton() {
         type="button"
       >
         <span aria-hidden="true" className="notification-bell" />
-        {alerts.length > 0 && <span className="notification-count">{alerts.length}</span>}
+        {unreadCount + alerts.length > 0 && <span className="notification-count">{unreadCount + alerts.length}</span>}
       </button>
       {open && (
-        <section aria-label="Deadline notifications" className="notification-popover">
+        <section aria-label="Notifications" className="notification-popover">
           <div className="notification-popover-heading">
             <div>
-              <span className="eyebrow">Deadline alerts</span>
+              <span className="eyebrow">Agreement updates & deadlines</span>
               <h3>Notifications</h3>
             </div>
             {permission === 'granted' && <span className="badge">Browser alerts on</span>}
+          </div>
+          {error && <p role="status" className="notification-permission-warning">{error}</p>}
+          <div className="notification-list">
+            {notifications.map((notice) => (
+              <article className={`notification-item ${notice.read ? 'notification-read' : ''}`} key={notice.key}>
+                <strong>{notice.title} {!notice.read && <span className="badge">Unread</span>}</strong>
+                <span>{notice.message}</span>
+                <time dateTime={new Date(notice.timestamp * 1000).toISOString()}>{new Date(notice.timestamp * 1000).toLocaleString()}</time>
+                <div className="notification-item-actions">
+                  <Link to={`/agreement/${notice.agreementId}`} onClick={() => setOpen(false)}>View Agreement</Link>
+                  {!notice.read && <button type="button" onClick={() => markRead(notice.key)}>Mark as Read</button>}
+                </div>
+              </article>
+            ))}
           </div>
           {permission === 'denied' && (
             <p className="notification-permission-warning">
