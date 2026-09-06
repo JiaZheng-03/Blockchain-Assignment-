@@ -129,10 +129,11 @@ contract LogisticsEscrow {
     error FollowUpResponsePending();
 
     address public immutable arbitrator;
-    uint256 public constant CONTRACT_VERSION = 16;
+    uint256 public constant CONTRACT_VERSION = 17;
     string public constant EVIDENCE_URI_SCHEME = "supabase://";
     uint256 public constant MAX_MILESTONES = 2;
     uint256 public constant REPUTATION_POINTS_PER_MILESTONE = 10;
+    uint256 public constant REPUTATION_PENALTY_PER_DELAY = 10;
     uint256 public constant MIN_SCHEDULE_DELAY = 1 hours;
     uint256 public constant EVIDENCE_REVIEW_PERIOD = 1 hours;
     uint256 public constant ARBITRATOR_RESPONSE_PERIOD = 24 hours;
@@ -203,6 +204,13 @@ contract LogisticsEscrow {
         uint256 paymentAmount
     );
     event CarrierReputationAwarded(
+        address indexed carrier,
+        uint256 indexed agreementId,
+        uint256 indexed milestoneIndex,
+        uint256 points,
+        uint256 totalPoints
+    );
+    event CarrierReputationDeducted(
         address indexed carrier,
         uint256 indexed agreementId,
         uint256 indexed milestoneIndex,
@@ -865,12 +873,31 @@ contract LogisticsEscrow {
             revert DeadlineNotPassed();
         }
 
+        _deductCarrierReputationForDelay(agreementId);
         uint256 refund = agreement.remainingAmount;
         current.extensionPending = false;
         agreement.remainingAmount = 0;
         agreement.status = AgreementStatus.Refunded;
         emit Refunded(agreementId, agreement.shipper, refund);
         _sendValue(agreement.shipper, refund);
+    }
+
+    /// @dev Called only after validating a missed evidence deadline. Refunding closes the
+    /// agreement, so the same delay cannot be penalized twice. Scores never go below zero.
+    function _deductCarrierReputationForDelay(uint256 agreementId) private {
+        Agreement storage agreement = agreements[agreementId];
+        uint256 points = carrierReputation[agreement.carrier];
+        uint256 deduction = points < REPUTATION_PENALTY_PER_DELAY
+            ? points
+            : REPUTATION_PENALTY_PER_DELAY;
+        carrierReputation[agreement.carrier] = points - deduction;
+        emit CarrierReputationDeducted(
+            agreement.carrier,
+            agreementId,
+            agreement.nextMilestone,
+            deduction,
+            points - deduction
+        );
     }
 
     /// @notice Either agreement participant may stop the active workflow and ask the Arbitrator

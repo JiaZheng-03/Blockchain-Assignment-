@@ -23,6 +23,7 @@ const eventDetails = {
   MilestoneProofSubmitted: (args) => `Evidence submitted for milestone ${Number(args.milestoneIndex) + 1}`,
   MilestoneConfirmed: (args) => `${ethers.formatEther(args.paymentAmount)} ETH released after Shipper confirmation for milestone ${Number(args.milestoneIndex) + 1}`,
   CarrierReputationAwarded: (args) => `${args.points.toString()} reputation points awarded to the Carrier (${args.totalPoints.toString()} total)`,
+  CarrierReputationDeducted: (args) => `${args.points.toString()} reputation points deducted for a missed Carrier deadline on milestone ${Number(args.milestoneIndex) + 1} (${args.totalPoints.toString()} total)`,
   EvidenceRevisionRequested: (args) => `Shipper requested replacement evidence for milestone ${Number(args.milestoneIndex) + 1}; resubmission is due ${new Date(Number(args.resubmissionDueAt) * 1000).toLocaleString()}`,
   AgreementCompleted: () => 'All milestones paid and the agreement completed',
   Refunded: (args) => `${ethers.formatEther(args.amount)} ETH returned to the shipper`,

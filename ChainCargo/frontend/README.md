@@ -10,7 +10,7 @@ CargoSeal is a full-stack Ethereum dApp for milestone-based logistics agreements
 | Agreement creation | Auto-generated per-Shipper name, Carrier, notes, fully funded escrow value, and deadlines for the two fixed milestones |
 | Funding | `createAgreement` is payable and enforces that the Shipper-selected milestone payouts equal the deposited escrow |
 | Milestones and payouts | Carrier uploads evidence to a shared Supabase Storage bucket and submits its `keccak256` file hash plus storage reference; the Shipper verifies it before confirmation atomically releases payment |
-| Carrier reputation | Every Shipper-confirmed milestone awards the assigned Carrier 10 immutable on-chain reputation points; proof submission, refunds, and dispute payouts award no points |
+| Carrier reputation | Each confirmed milestone awards the assigned Carrier 10 on-chain points. A Shipper refund for a missed evidence deadline deducts 10 points once, with a minimum score of zero. Approved extensions use the updated deadline; timely submitted evidence is protected from delay penalties. |
 | Refunds and disputes | Only the Shipper can refund an unsubmitted overdue milestone; either agreement participant can request a dispute with details; the Carrier can also escalate evidence after one hour without a Shipper response; the deployer/arbitrator resolves the remaining split |
 | Transaction history | Dashboard lists wallet agreements and History reconstructs chronological activity from contract events |
 | Smart-contract UI integration | React, ethers v6, MetaMask, live contract reads/writes, transaction confirmations, and error reporting |

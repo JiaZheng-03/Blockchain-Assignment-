@@ -46,6 +46,72 @@ describe("LogisticsEscrow", function () {
     return { agreementId, deadline, dueDates, now, payouts, totalWei };
   }
 
+  it("deducts reputation once when delivery is overdue and preserves the refund", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    const { dueDates, payouts } = await createAgreement(escrow, shipper, carrier);
+    const hash = ethers.keccak256(ethers.toUtf8Bytes("pickup"));
+    await escrow.connect(carrier).submitEvidence(0, 0, hash);
+    await escrow.connect(shipper).confirmMilestone(0, 0, hash);
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(10);
+
+    await time.increaseTo(dueDates[1] + 1);
+    await expect(escrow.connect(outsider).claimRefundAfterDeadline(0))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(10);
+    const tx = await escrow.connect(shipper).claimRefundAfterDeadline(0);
+    await expect(tx).to.emit(escrow, "CarrierReputationDeducted")
+      .withArgs(carrier.address, 0, 1, 10, 0);
+    await expect(tx).to.changeEtherBalances([escrow, shipper], [-payouts[1], payouts[1]]);
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(0);
+    await expect(escrow.connect(shipper).claimRefundAfterDeadline(0))
+      .to.be.revertedWithCustomError(escrow, "InvalidStatus");
+  });
+
+  it("caps delay deductions at zero without blocking refunds for new carriers", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    const { dueDates } = await createAgreement(escrow, shipper, carrier);
+    await time.increaseTo(dueDates[0] + 1);
+    await expect(escrow.connect(shipper).claimRefundAfterDeadline(0))
+      .to.emit(escrow, "CarrierReputationDeducted")
+      .withArgs(carrier.address, 0, 0, 0, 0);
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(0);
+  });
+
+  it("deducts only the fixed penalty from reputation earned across agreements", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    const hash = ethers.keccak256(ethers.toUtf8Bytes("completed evidence"));
+    for (const index of [0, 1]) {
+      await escrow.connect(carrier).submitEvidence(0, index, hash);
+      await escrow.connect(shipper).confirmMilestone(0, index, hash);
+    }
+    const { dueDates } = await createAgreement(escrow, shipper, carrier, { title: "Delayed shipment" });
+    await time.increaseTo(dueDates[0] + 1);
+    await expect(escrow.connect(shipper).claimRefundAfterDeadline(1))
+      .to.emit(escrow, "CarrierReputationDeducted")
+      .withArgs(carrier.address, 1, 0, 10, 10);
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(10);
+  });
+
+  it("respects extended deadlines and does not penalize a slow Shipper review", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    const { dueDates } = await createAgreement(escrow, shipper, carrier);
+    await time.increaseTo(dueDates[0] - 3600);
+    await escrow.connect(carrier).requestDeadlineExtension(0, 0, "Traffic delay");
+    await escrow.connect(shipper).approveDeadlineExtension(0, 0);
+    await time.increaseTo(dueDates[0] + 1);
+    await expect(escrow.connect(shipper).claimRefundAfterDeadline(0))
+      .to.be.revertedWithCustomError(escrow, "DeadlineNotPassed");
+    const hash = ethers.keccak256(ethers.toUtf8Bytes("extended pickup"));
+    await escrow.connect(carrier).submitEvidence(0, 0, hash);
+    await time.increaseTo(dueDates[0] + 86401);
+    await expect(escrow.connect(shipper).claimRefundAfterDeadline(0))
+      .to.be.revertedWithCustomError(escrow, "DeadlineNotPassed");
+    await escrow.connect(shipper).confirmMilestone(0, 0, hash);
+    expect(await escrow.carrierReputation(carrier.address)).to.equal(10);
+    expect(await escrow.queryFilter(escrow.filters.CarrierReputationDeducted())).to.have.length(0);
+  });
+
   it("requires the assigned Carrier to accept a funded agreement before work begins", async function () {
     const { escrow, shipper, carrier, outsider } = await deployFixture();
     const { agreementId, dueDates } = await createAgreement(escrow, shipper, carrier, {
