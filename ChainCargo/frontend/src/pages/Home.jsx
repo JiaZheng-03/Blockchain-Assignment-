@@ -10,8 +10,10 @@ function Home() {
   const { hasAppAccess, isArbitrator, isShipper } = useProfile();
   const primaryAction = !isConnected
     ? { to: '/login', label: 'Connect your wallet' }
-    : !isCorrectNetwork || deploymentStatus !== 'ready'
-      ? { to: '/setup', label: 'Finish your setup' }
+    : !isCorrectNetwork
+      ? { to: '/login', label: `Switch to ${expectedNetworkName}` }
+      : deploymentStatus !== 'ready'
+        ? null
       : !hasAppAccess
         ? { to: '/register', label: 'Register your wallet' }
         : isArbitrator
@@ -32,8 +34,9 @@ function Home() {
           <h2>Keep cargo moving.<br /><span className="gradient-text">Keep payments secure.</span></h2>
           <p>Bring shippers and carriers into one workspace. Fund a shipment, verify its journey, and release payment at every confirmed milestone.</p>
           <div className="hero-actions">
-            <Link className="btn btn-primary" to={primaryAction.to}>{primaryAction.label}<Icon name="arrow" size={16} /></Link>
-            <Link className="btn btn-secondary" to="/setup">Explore the setup<Icon name="external" size={14} /></Link>
+            {primaryAction
+              ? <Link className="btn btn-primary" to={primaryAction.to}>{primaryAction.label}<Icon name="arrow" size={16} /></Link>
+              : <span className="notice error">The current contract deployment is unavailable. Ask the developer to deploy the latest version.</span>}
           </div>
           <span className="overview-assurance"><Icon name="lock" size={12} />Your wallet. Your confirmation. Your control.</span>
         </div>

@@ -12,8 +12,8 @@ function NoticeToasts() {
         { id: crypto.randomUUID(), message, type },
       ]);
     };
-    window.addEventListener('chaincargo:action-result', showActionResult);
-    return () => window.removeEventListener('chaincargo:action-result', showActionResult);
+    window.addEventListener('cargoseal:action-result', showActionResult);
+    return () => window.removeEventListener('cargoseal:action-result', showActionResult);
   }, []);
 
   const dismissCurrent = () => {

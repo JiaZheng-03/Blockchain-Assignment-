@@ -1,7 +1,7 @@
 {
-  "address": "0x2E225C6595833280F6f3A47f88DBa773307D6953",
+  "address": "0x897f99a1B1228C2a3D05f2c38a200903dC682ee7",
   "chainId": 11155111,
-  "deploymentBlock": 11641012,
+  "deploymentBlock": 11644159,
   "abi": [
     {
       "inputs": [],
@@ -53,6 +53,11 @@
     {
       "inputs": [],
       "name": "DeadlineRefundAvailable",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "DisputeResponseAlreadySubmitted",
       "type": "error"
     },
     {
@@ -608,6 +613,12 @@
           "internalType": "uint64",
           "name": "pausedSeconds",
           "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "resolutionReason",
+          "type": "string"
         }
       ],
       "name": "DisputeContinued",
@@ -661,6 +672,31 @@
         }
       ],
       "name": "DisputeResolved",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "respondedBy",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "responseDetails",
+          "type": "string"
+        }
+      ],
+      "name": "DisputeResponseSubmitted",
       "type": "event"
     },
     {
@@ -1442,6 +1478,26 @@
               "type": "string"
             },
             {
+              "internalType": "uint64",
+              "name": "respondedAt",
+              "type": "uint64"
+            },
+            {
+              "internalType": "address",
+              "name": "respondedBy",
+              "type": "address"
+            },
+            {
+              "internalType": "string",
+              "name": "responseDetails",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "resolutionReason",
+              "type": "string"
+            },
+            {
               "internalType": "bool",
               "name": "active",
               "type": "bool"
@@ -1873,9 +1929,32 @@
           "internalType": "bool",
           "name": "approveEvidence",
           "type": "bool"
+        },
+        {
+          "internalType": "string",
+          "name": "resolutionReason",
+          "type": "string"
         }
       ],
       "name": "resolveDisputeAndContinue",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "responseDetails",
+          "type": "string"
+        }
+      ],
+      "name": "respondToDispute",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"

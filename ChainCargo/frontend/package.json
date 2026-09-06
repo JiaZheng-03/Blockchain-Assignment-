@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently --kill-others --names API,VITE \"npm run dev:api\" \"npm run dev:ui\"",
+    "dev": "concurrently --kill-others --names API,VITE \"node server.js\" \"node node_modules/vite/bin/vite.js --configLoader runner\"",
     "dev:local": "concurrently --kill-others --names API,VITE \"node --env-file=.env.hardhat server.js\" \"vite --mode hardhat\"",
     "dev:api": "node server.js",
     "dev:ui": "vite --configLoader runner",

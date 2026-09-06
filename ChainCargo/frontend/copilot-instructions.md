@@ -11,7 +11,7 @@ CargoSeal is a university logistics escrow dApp. Preserve the current stack and 
 - Supabase Storage for public evidence files
 - Sepolia as the submitted/default network; Hardhat chain 31337 for local development
 
-`ChainCargo/frontend` is the application root. `contracts/LogisticsEscrow.sol` is one multi-agreement escrow contract; the project does not deploy an `Escrow.sol` instance per agreement and has no `EscrowFactory.sol`.
+`frontend` is the CargoSeal application root. `contracts/LogisticsEscrow.sol` is one multi-agreement escrow contract; the project does not deploy an `Escrow.sol` instance per agreement and has no `EscrowFactory.sol`.
 
 ## Roles and agreement flow
 

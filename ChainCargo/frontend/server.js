@@ -21,14 +21,14 @@ import {
 } from './src/utils/evidenceStorage.js';
 
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url));
-const port = Number(process.env.CHAINCARGO_API_PORT || 3001);
-const host = process.env.CHAINCARGO_HOST || '127.0.0.1';
+const port = Number(process.env.CARGOSEAL_API_PORT || 3001);
+const host = process.env.CARGOSEAL_HOST || '127.0.0.1';
 const supabaseUrl = normalizeSupabaseProjectUrl(process.env.SUPABASE_URL);
 const supabaseProjectRef = supabaseProjectRefFromUrl(supabaseUrl);
 const supabaseSecretKey = (
   process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
 )?.trim();
-const evidenceBucket = process.env.SUPABASE_STORAGE_BUCKET?.trim() || 'chaincargo-evidence';
+const evidenceBucket = process.env.SUPABASE_STORAGE_BUCKET?.trim() || 'cargoseal-evidence';
 const chainId = Number(process.env.VITE_ESCROW_CHAIN_ID || 11155111);
 const deploymentFile = chainId === 31337 ? 'deployment.local.json' : 'deployment.json';
 const deployment = JSON.parse(

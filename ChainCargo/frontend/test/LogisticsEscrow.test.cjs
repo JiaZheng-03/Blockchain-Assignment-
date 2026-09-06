@@ -9,7 +9,7 @@ describe("LogisticsEscrow", function () {
     const escrow = await Escrow.deploy();
     await escrow.waitForDeployment();
 
-    await escrow.connect(arbitrator).register("ChainCargo Arbitration", 3);
+    await escrow.connect(arbitrator).register("CargoSeal Arbitration", 3);
     await escrow.connect(shipper).register("Acme Imports", 1);
     await escrow.connect(carrier).register("Swift Freight", 2);
     await escrow.connect(secondShipper).register("Second Shipper", 1);
@@ -237,7 +237,7 @@ describe("LogisticsEscrow", function () {
     const { escrow, shipper, carrier } = await deployFixture();
     await createAgreement(escrow, shipper, carrier);
     const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("pickup photo"));
-    const proofURI = "supabase://abcdefghijklmnopqrst/chaincargo-evidence/0/pickup.pdf";
+    const proofURI = "supabase://abcdefghijklmnopqrst/cargoseal-evidence/0/pickup.pdf";
 
     await escrow.connect(carrier).submitMilestoneProof(0, 0, evidenceHash, proofURI);
     expect((await escrow.getMilestones(0))[0].proofURI).to.equal(proofURI);
@@ -298,8 +298,8 @@ describe("LogisticsEscrow", function () {
     await escrow.waitForDeployment();
     await expect(escrow.connect(other).register("Fake Arbitrator", 3))
       .to.be.revertedWithCustomError(escrow, "Unauthorized");
-    await expect(escrow.connect(deployer).register("ChainCargo Arbitration", 3))
-      .to.emit(escrow, "UserRegistered").withArgs(deployer.address, 3, "ChainCargo Arbitration");
+    await expect(escrow.connect(deployer).register("CargoSeal Arbitration", 3))
+      .to.emit(escrow, "UserRegistered").withArgs(deployer.address, 3, "CargoSeal Arbitration");
   });
 
   it("lets only the Carrier request arbitration after one hour without Shipper action", async function () {
@@ -592,6 +592,39 @@ describe("LogisticsEscrow", function () {
       .withArgs(0, shipper.address, "Delivery disputed");
   });
 
+  it("lets only the other participant submit one dispute response", async function () {
+    const { escrow, shipper, carrier, outsider } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    await escrow.connect(shipper).requestDispute(0, "Delivery condition disputed");
+
+    await expect(escrow.connect(outsider).respondToDispute(0, "Outside response"))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(shipper).respondToDispute(0, "Second statement"))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(carrier).respondToDispute(0, ""))
+      .to.be.revertedWithCustomError(escrow, "InvalidInput");
+    await expect(escrow.connect(carrier).respondToDispute(0, "Cargo was delivered intact"))
+      .to.emit(escrow, "DisputeResponseSubmitted")
+      .withArgs(0, carrier.address, "Cargo was delivered intact");
+
+    const dispute = await escrow.getDisputeRequest(0);
+    expect(dispute.respondedBy).to.equal(carrier.address);
+    expect(dispute.responseDetails).to.equal("Cargo was delivered intact");
+    expect(dispute.respondedAt).to.be.greaterThan(0);
+    await expect(escrow.connect(carrier).respondToDispute(0, "Replacement response"))
+      .to.be.revertedWithCustomError(escrow, "DisputeResponseAlreadySubmitted");
+  });
+
+  it("lets the Shipper respond when the Carrier opened the dispute", async function () {
+    const { escrow, shipper, carrier } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    await escrow.connect(carrier).requestDispute(0, "Payment decision disputed");
+
+    await expect(escrow.connect(shipper).respondToDispute(0, "Evidence does not match the cargo"))
+      .to.emit(escrow, "DisputeResponseSubmitted")
+      .withArgs(0, shipper.address, "Evidence does not match the cargo");
+  });
+
   it("lets the Carrier request a dispute and the Arbitrator resolve it", async function () {
     const { escrow, arbitrator, shipper, carrier, outsider } = await deployFixture();
     await createAgreement(escrow, shipper, carrier);
@@ -624,7 +657,11 @@ describe("LogisticsEscrow", function () {
 
     const resolvedAt = await time.latest();
     const pausedSeconds = BigInt(resolvedAt) - dispute.openedAt + 1n;
-    await expect(escrow.connect(arbitrator).resolveDisputeAndContinue(0, true))
+    await expect(escrow.connect(arbitrator).resolveDisputeAndContinue(
+      0,
+      true,
+      "The submitted evidence proves pickup",
+    ))
       .to.emit(escrow, "DisputeContinued");
 
     const agreement = await escrow.getAgreement(0);
@@ -634,6 +671,8 @@ describe("LogisticsEscrow", function () {
     expect(agreement.deadline).to.be.at.least(BigInt(deadline) + pausedSeconds);
     expect(milestones[1].dueAt).to.be.at.least(BigInt(dueDates[1]) + pausedSeconds);
     expect(milestones[1].proofHash).to.equal(deliveryHash);
+    expect((await escrow.getDisputeRequest(0)).resolutionReason)
+      .to.equal("The submitted evidence proves pickup");
   });
 
   it("lets the Arbitrator request replacement evidence and resume the agreement", async function () {
@@ -644,7 +683,11 @@ describe("LogisticsEscrow", function () {
     await escrow.connect(carrier).requestDispute(0, "Shipper and Carrier need arbitration");
 
     await time.increase(3_600);
-    await expect(escrow.connect(arbitrator).resolveDisputeAndContinue(0, false))
+    await expect(escrow.connect(arbitrator).resolveDisputeAndContinue(
+      0,
+      false,
+      "A clearer receipt is required",
+    ))
       .to.emit(escrow, "EvidenceRevisionRequested");
 
     const agreement = await escrow.getAgreement(0);
@@ -653,6 +696,19 @@ describe("LogisticsEscrow", function () {
     expect(milestone.state).to.equal(0);
     expect(milestone.proofHash).to.equal(ethers.ZeroHash);
     expect((await escrow.getDisputeRequest(0)).active).to.equal(false);
+  });
+
+  it("requires the Arbitrator to record a bounded continuation reason", async function () {
+    const { escrow, arbitrator, shipper, carrier } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("contested pickup"));
+    await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
+    await escrow.connect(shipper).requestDispute(0, "Please review pickup evidence");
+
+    for (const reason of ["", "x".repeat(1001)]) {
+      await expect(escrow.connect(arbitrator).resolveDisputeAndContinue(0, true, reason))
+        .to.be.revertedWithCustomError(escrow, reason ? "InputTooLong" : "InvalidInput");
+    }
   });
 
   it("rejects invalid agreement IDs and expired evidence", async function () {

@@ -62,7 +62,7 @@ function WalletGate() {
         <span className="eyebrow">Contract deployment required</span>
         <h2>Deploy CargoSeal to {expectedNetworkName} first</h2>
         <p>The configured address does not contain the current escrow contract.</p>
-        <Link className="btn btn-primary" to="/setup">Open setup checklist</Link>
+        <p>Ask the developer to deploy the latest contract version, then refresh this page.</p>
       </div>
     );
   }

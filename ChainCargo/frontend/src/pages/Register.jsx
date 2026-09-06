@@ -15,12 +15,9 @@ function Register() {
   const {
     account,
     authenticateWallet,
-    authorizedAccountCount,
     isConnected,
-    isConnecting,
     isAuthenticated,
     isAuthenticating,
-    switchWallet,
   } = useWallet();
   const {
     deploymentStatus,
@@ -91,16 +88,16 @@ function Register() {
 
   return (
     <div className="auth-shell">
-      <div className="form-card auth-card setup-card">
+      <div className="form-card auth-card registration-card">
         <div className="auth-card-header">
-          <Link className="btn btn-secondary auth-back-button" to="/setup">← Back to setup</Link>
-          <Link className="brand dark" to="/"><img src="/favicon.svg" alt="" width="30" height="30" aria-hidden="true" />ChainCargo</Link>
+          <Link className="btn btn-secondary auth-back-button" to="/login?choose=1">← Back to select wallet</Link>
+          <Link className="brand dark" to="/"><img src="/favicon.svg" alt="" width="30" height="30" aria-hidden="true" />CargoSeal</Link>
         </div>
-        <span className="eyebrow">{isRegistered ? 'Account setup complete' : 'Step 1 of your account setup'}</span>
+        <span className="eyebrow">{isRegistered ? 'Wallet registration complete' : 'Wallet role registration'}</span>
         <h2>{isRegistered ? 'Your wallet is ready' : 'Register a wallet role'}</h2>
         <p>
           {isRegistered
-            ? 'Your account is registered on Sepolia and ready to use in ChainCargo.'
+            ? 'Your account is registered on Sepolia and ready to use in CargoSeal.'
             : 'Each MetaMask account has one permanent role in the Sepolia deployment.'}
         </p>
 
@@ -142,7 +139,7 @@ function Register() {
         )}
         {!registrationSyncing && isConnected && isCorrectNetwork && deploymentUnavailable && (
           <div className="notice error">
-            The Sepolia escrow contract is not available. Open the setup checklist and run the deployment command.
+            The Sepolia escrow contract is not available. Ask the developer to deploy the latest contract version.
           </div>
         )}
 
@@ -152,7 +149,7 @@ function Register() {
               <span className="registration-check" aria-hidden="true">&#10003;</span>
               <div>
                 <strong>Registration complete</strong>
-                <p>Your permanent ChainCargo role has been confirmed on-chain.</p>
+                <p>Your permanent CargoSeal role has been confirmed on-chain.</p>
               </div>
             </div>
 
@@ -205,15 +202,8 @@ function Register() {
             </div>
             <label>
               Business / Display Name
-              <input value={name} onChange={(event) => setName(event.target.value)} required placeholder={role === '1' ? 'Acme Imports' : role === '2' ? 'Swift Freight' : 'ChainCargo Arbitration'} />
+              <input value={name} onChange={(event) => setName(event.target.value)} required placeholder={role === '1' ? 'Acme Imports' : role === '2' ? 'Swift Freight' : 'CargoSeal Arbitration'} />
             </label>
-            {isConnected && (
-              <button className="text-button" type="button" onClick={switchWallet} disabled={isConnecting}>
-                {authorizedAccountCount > 1
-                  ? 'Wrong account? Switch to the other authorized account'
-                  : 'Wrong account? Authorize another MetaMask account'}
-              </button>
-            )}
             <button
               className="btn btn-primary"
               disabled={

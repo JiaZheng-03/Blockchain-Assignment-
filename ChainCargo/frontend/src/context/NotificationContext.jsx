@@ -34,7 +34,7 @@ export function NotificationProvider({ children }) {
     const logsByKey = new Map();
     const timestamps = new Map();
     // Availability has no Solidity event, so retain observed deadline notices locally.
-    const refundHistoryKey = `chaincargo:refund-notices:${scope}`;
+    const refundHistoryKey = `cargoseal:refund-notices:${scope}`;
     let refundHistory = new Map();
     try {
       const saved = JSON.parse(localStorage.getItem(refundHistoryKey) || '[]');
@@ -97,7 +97,7 @@ export function NotificationProvider({ children }) {
     check();
     const timer = window.setInterval(check, 30_000);
     const syncRead = (event) => {
-      if (event.key !== null && !event.key?.startsWith(`chaincargo:notification:${scope}:`)) return;
+      if (event.key !== null && !event.key?.startsWith(`cargoseal:notification:${scope}:`)) return;
       setItems((current) => current.map((item) => ({ ...item, read: wasRead(item.key) })));
       setQueue((current) => current.filter((item) => !wasRead(item.key)));
     };

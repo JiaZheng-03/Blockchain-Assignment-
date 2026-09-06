@@ -154,6 +154,10 @@ export function evidenceHashMatches(actualHash, expectedHash) {
     actualHash.toLowerCase() === expectedHash.toLowerCase();
 }
 
+export function canOpenEvidenceLink({ isShipper, verificationStatus }) {
+  return !isShipper || verificationStatus === 'verified';
+}
+
 async function readError(response, fallback) {
   try {
     const payload = await response.json();

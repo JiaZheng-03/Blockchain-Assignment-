@@ -41,9 +41,6 @@
 .breadcrumbs { gap: 12px; font-size: 11px; color: var(--subtle); white-space: nowrap; }
 .breadcrumbs strong { color: var(--muted); font-weight: 550; }
 .breadcrumbs > a { display: flex; color: var(--subtle); }
-.command-trigger { display: flex; align-items: center; gap: 10px; width: clamp(180px, 23vw, 330px); color: var(--muted); background: var(--surface-inset); border: 1px solid var(--border); border-radius: 10px; height: 40px; padding: 0 13px; cursor: pointer; text-align: left; font-size: 12px; border-color: var(--border); }
-.command-trigger:hover { border-color: var(--primary-border); }
-.command-trigger kbd { font-size: 10px; margin-left: auto; border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; white-space: nowrap; }
 .topbar-actions { gap: 13px; margin-left: auto; }
 .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--border); background: var(--surface-inset); color: var(--primary); border-radius: 9px; cursor: pointer; }
 .icon-button:hover { color: var(--text); border-color: var(--subtle); }
@@ -60,18 +57,6 @@
 .workspace-status > a { color: var(--primary); text-decoration: none; margin-left: auto; }
 .connection-status { margin-left: auto; }
 .mobile-nav-toggle, .mobile-nav-close { display: none; }
-.command-dialog { padding: 0; width: min(560px, calc(100vw - 32px)); max-height: 80vh; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: var(--shadow-raised); }
-.command-dialog::backdrop { background: var(--overlay); backdrop-filter: blur(7px); }
-.command-input-row { display: flex; align-items: center; gap: 12px; padding: 15px; border-bottom: 1px solid var(--border); }
-.command-input-row input { border: 0; background: transparent; padding: 10px 0; box-shadow: none; }
-.command-results { padding: 18px 10px; }
-.command-results button { width: 100%; display: flex; gap: 14px; align-items: center; padding: 12px 15px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; text-align: left; }
-.command-results button:hover, .command-results button:focus-visible { background: var(--primary-soft); color: var(--primary); }
-.command-results button > span { display: grid; gap: 4px; flex: 1; }
-.command-results strong { color: var(--text); font-size: 13px; }
-.command-results small { font-size: 11px; color: var(--muted); }
-.command-footer { border-top: 1px solid var(--border); display: flex; justify-content: space-between; padding: 12px 20px; color: var(--subtle); font-size: 10px; }
-.command-empty { padding: 16px; font-size: 13px; }
 .page-heading { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 25px; }
 .page-heading h1 { font-size: 29px; margin-bottom: 8px; font-weight: 700; }
 .page-heading p { font-size: 13px; margin: 0; }
@@ -269,16 +254,6 @@ input[type="file"]::file-selector-button { border: 1px solid var(--primary-borde
 .progress-track span { background: var(--gradient); }
 .proof-box { background: var(--surface-inset); border: 1px solid var(--border); border-radius: 8px; padding: 14px; font-size: 11px; gap: 7px; }
 .proof-box code { color: var(--muted); font-size: 10px; }
-.setup-page { max-width: 1000px; margin: 0 auto; }
-.setup-intro { background: linear-gradient(115deg, var(--surface), var(--primary-soft)); }
-.setup-intro h1 { font-size: 26px; }
-.setup-intro > p { font-size: 12px; }
-.setup-step { padding: 24px 0; gap: 20px; }
-.setup-step-number { border: 1px solid var(--border); border-radius: 9px; background: var(--surface-inset); font: 12px var(--mono); }
-.setup-step p { font-size: 12px; line-height: 1.7; }
-.setup-step small { font-size: 11px; overflow-wrap: anywhere; }
-.setup-step code { font-size: 11px; overflow-wrap: anywhere; }
-.command-line { color: var(--primary); background: var(--surface-inset); border: 1px solid var(--border); }
 .flow-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
 .flow-grid > div > span { color: var(--primary); font: 12px var(--mono); display: block; margin-bottom: 14px; }
 .flow-grid strong { font-size: 12px; }
@@ -296,8 +271,6 @@ input[type="file"]::file-selector-button { border: 1px solid var(--primary-borde
 .role-card:hover, .role-card.selected { background: var(--primary-soft); border-color: var(--primary); }
 .role-card small { font-size: 10px; line-height: 1.7; }
 .role-icon { border-radius: 9px; font-size: 12px; }
-.setup-help { padding: 18px 0; border-top: 1px solid var(--border); margin-top: 22px; font-size: 11px; }
-.setup-help strong { display: block; margin-bottom: 8px; }
 .back-link { font-size: 11px; text-decoration: none; }
 .selected-wallet-details { background: var(--surface-inset); border-color: var(--border); border-radius: 12px; }
 .wallet-detail-choice:hover, .wallet-detail-choice.current { border-color: var(--primary-border); box-shadow: 0 0 0 2px var(--primary-soft); }
@@ -352,7 +325,7 @@ input[type="file"]::file-selector-button { border: 1px solid var(--primary-borde
 
 /* Shared controls: same geometry and interaction feedback, distinct semantic ink. */
 .btn, .toast-popup button, .icon-button, .notification-trigger,
-.text-button, .filter-tabs button, .command-trigger, .account-choice,
+.text-button, .filter-tabs button, .account-choice,
 .role-card, .wizard-steps button, .wallet-detail-choice,
 input::file-selector-button {
   transition: background-color .16s ease, border-color .16s ease, color .16s ease,
@@ -384,7 +357,7 @@ input::file-selector-button {
 }
 .btn:disabled svg, .wizard-steps button:disabled span { color: inherit; background: transparent; }
 .btn:focus-visible, .toast-popup button:focus-visible, .icon-button:focus-visible,
-.notification-trigger:focus-visible, .command-trigger:focus-visible,
+.notification-trigger:focus-visible,
 .filter-tabs button:focus-visible, .text-button:focus-visible,
 .account-choice:focus-visible, .role-card:focus-visible, .wizard-steps button:focus-visible {
   outline: 3px solid var(--focus); outline-offset: 3px;
@@ -392,7 +365,6 @@ input::file-selector-button {
 input, select, textarea { accent-color: var(--primary); }
 input[aria-invalid='true'], select[aria-invalid='true'], textarea[aria-invalid='true'] { border-color: var(--danger); }
 input[aria-invalid='true']:focus, select[aria-invalid='true']:focus, textarea[aria-invalid='true']:focus { outline: 2px solid var(--danger); outline-offset: 2px; }
-.command-input-row:focus-within { box-shadow: inset 0 -2px var(--focus); }
 .status-active, .state-1 .badge { color: var(--primary); background: var(--primary-soft); }
 .role-carrier { color: var(--accent-ink); background: var(--accent-soft); }
 .toast-popup.success h2 { color: var(--success); }
@@ -422,7 +394,6 @@ input[aria-invalid='true']:focus, select[aria-invalid='true']:focus, textarea[ar
   .main-content { padding: 28px 24px 40px; }
   .workspace-topbar { padding: 0 24px; }
   .breadcrumbs > span { display: none; }
-  .command-trigger { width: 200px; }
   .workspace-status { padding-inline: 24px; gap: 19px; }
   .connection-status { display: none !important; }
   .overview-hero { padding: 28px; }
@@ -430,8 +401,6 @@ input[aria-invalid='true']:focus, select[aria-invalid='true']:focus, textarea[ar
   .visual-top-note { right: -12px; }
 }
 @media (max-width: 1000px) {
-  .command-trigger { width: 38px; justify-content: center; padding: 0; }
-  .command-trigger span, .command-trigger kbd { display: none; }
   .workspace-status > span:nth-child(3) { display: none; }
   .overview-hero { grid-template-columns: 1fr; }
   .overview-copy > p { max-width: 500px; }
@@ -491,8 +460,6 @@ input[aria-invalid='true']:focus, select[aria-invalid='true']:focus, textarea[ar
   .overview-bottom-note, .workspace-footer { flex-direction: column; align-items: flex-start; gap: 9px; }
   .workspace-footer { padding: 20px; font-size: 10px; }
   .overview-bottom-note span { line-height: 1.6; }
-  .setup-intro h1 { font-size: 22px; }
-  .setup-step { gap: 13px; }
   .auth-shell { padding-top: 0; }
   .auth-card { padding: 24px 20px; }
   .skip-link { left: 18px; }

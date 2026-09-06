@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @title ChainCargo milestone-based logistics escrow
+/// @title CargoSeal milestone-based logistics escrow
 /// @notice Wallet addresses authenticate users. Shipment evidence is committed as a hash.
 contract LogisticsEscrow {
     enum Role {
@@ -70,6 +70,10 @@ contract LogisticsEscrow {
         uint64 openedAt;
         address openedBy;
         string reason;
+        uint64 respondedAt;
+        address respondedBy;
+        string responseDetails;
+        string resolutionReason;
         bool active;
         bool reviewTimeout;
     }
@@ -116,9 +120,10 @@ contract LogisticsEscrow {
     error AcceptancePeriodClosed();
     error NoEvidenceResubmissionWindow();
     error NoActiveDispute();
+    error DisputeResponseAlreadySubmitted();
 
     address public immutable arbitrator;
-    uint256 public constant CONTRACT_VERSION = 13;
+    uint256 public constant CONTRACT_VERSION = 14;
     string public constant EVIDENCE_URI_SCHEME = "supabase://";
     uint256 public constant MAX_MILESTONES = 2;
     uint256 public constant REPUTATION_POINTS_PER_MILESTONE = 10;
@@ -214,6 +219,11 @@ contract LogisticsEscrow {
         address indexed openedBy,
         string reason
     );
+    event DisputeResponseSubmitted(
+        uint256 indexed agreementId,
+        address indexed respondedBy,
+        string responseDetails
+    );
     event ArbitrationRequested(
         uint256 indexed agreementId,
         uint256 indexed milestoneIndex,
@@ -248,7 +258,8 @@ contract LogisticsEscrow {
         uint256 indexed agreementId,
         uint256 indexed milestoneIndex,
         bool evidenceApproved,
-        uint64 pausedSeconds
+        uint64 pausedSeconds,
+        string resolutionReason
     );
 
     modifier nonReentrant() {
@@ -872,9 +883,36 @@ contract LogisticsEscrow {
         return disputeRequests[agreementId];
     }
 
+    /// @notice The participant who did not open the dispute may add one response for the Arbitrator.
+    function respondToDispute(
+        uint256 agreementId,
+        string calldata responseDetails
+    ) external agreementExists(agreementId) {
+        Agreement storage agreement = agreements[agreementId];
+        DisputeRequest storage dispute = disputeRequests[agreementId];
+        if (agreement.status != AgreementStatus.Disputed || !dispute.active) {
+            revert NoActiveDispute();
+        }
+        if (msg.sender != agreement.shipper && msg.sender != agreement.carrier) {
+            revert Unauthorized();
+        }
+        if (msg.sender == dispute.openedBy) revert Unauthorized();
+        if (dispute.respondedBy != address(0)) {
+            revert DisputeResponseAlreadySubmitted();
+        }
+        if (bytes(responseDetails).length == 0) revert InvalidInput();
+        _requireMaximumLength(responseDetails, MAX_DISPUTE_REASON_LENGTH);
+
+        dispute.respondedAt = uint64(block.timestamp);
+        dispute.respondedBy = msg.sender;
+        dispute.responseDetails = responseDetails;
+        emit DisputeResponseSubmitted(agreementId, msg.sender, responseDetails);
+    }
+
     function resolveDisputeAndContinue(
         uint256 agreementId,
-        bool approveEvidence
+        bool approveEvidence,
+        string calldata resolutionReason
     ) external agreementExists(agreementId) nonReentrant {
         if (msg.sender != arbitrator || profiles[msg.sender].role != Role.Arbitrator) {
             revert Unauthorized();
@@ -884,9 +922,12 @@ contract LogisticsEscrow {
         if (agreement.status != AgreementStatus.Disputed || !dispute.active) {
             revert NoActiveDispute();
         }
+        if (bytes(resolutionReason).length == 0) revert InvalidInput();
+        _requireMaximumLength(resolutionReason, MAX_DISPUTE_REASON_LENGTH);
         uint256 milestoneIndex = dispute.milestoneIndex;
         uint64 pausedSeconds = uint64(block.timestamp - dispute.openedAt);
         _restoreDisputeTime(agreementId, milestoneIndex, pausedSeconds);
+        dispute.resolutionReason = resolutionReason;
         dispute.active = false;
         agreement.status = AgreementStatus.Active;
 
@@ -900,7 +941,8 @@ contract LogisticsEscrow {
             agreementId,
             milestoneIndex,
             approveEvidence,
-            pausedSeconds
+            pausedSeconds,
+            resolutionReason
         );
     }
 
@@ -937,14 +979,18 @@ contract LogisticsEscrow {
         bool reviewTimeout
     ) private {
         agreements[agreementId].status = AgreementStatus.Disputed;
-        disputeRequests[agreementId] = DisputeRequest(
-            milestoneIndex,
-            uint64(block.timestamp),
-            openedBy,
-            reason,
-            true,
-            reviewTimeout
-        );
+        disputeRequests[agreementId] = DisputeRequest({
+            milestoneIndex: milestoneIndex,
+            openedAt: uint64(block.timestamp),
+            openedBy: openedBy,
+            reason: reason,
+            respondedAt: 0,
+            respondedBy: address(0),
+            responseDetails: "",
+            resolutionReason: "",
+            active: true,
+            reviewTimeout: reviewTimeout
+        });
         emit DisputeOpened(agreementId, openedBy, reason);
     }
 

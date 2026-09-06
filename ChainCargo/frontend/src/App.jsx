@@ -6,7 +6,6 @@ import WalletGate from './components/WalletGate';
 import Home from './pages/Home';
 import Register from './pages/Register';
 import WalletAccess from './pages/WalletAccess';
-import Setup from './pages/Setup';
 import Dashboard from './pages/Dashboard';
 import CreateAgreement from './pages/CreateAgreement';
 import AgreementDetail from './pages/AgreementDetail';
@@ -78,7 +77,6 @@ function App() {
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Home />} />
-          <Route path="/setup" element={<Setup />} />
           <Route path="/login" element={<WalletAccess />} />
           <Route path="/register" element={<Register />} />
           <Route element={<WalletGate />}>

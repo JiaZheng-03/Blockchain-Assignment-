@@ -5,7 +5,7 @@ import path from 'node:path'
 
 // https://vite.dev/config/
 export default defineConfig({
-  cacheDir: path.join(os.tmpdir(), 'chaincargo-vite-cache'),
+  cacheDir: path.join(os.tmpdir(), 'cargoseal-vite-cache'),
   plugins: [react()],
   server: {
     proxy: {

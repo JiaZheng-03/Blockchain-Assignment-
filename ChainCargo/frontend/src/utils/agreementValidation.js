@@ -19,6 +19,13 @@ export const FIXED_MILESTONES = Object.freeze([
   }),
 ]);
 
+export function syncFinalMilestoneDueAt(milestones, deadline, followsFinalDeadline) {
+  if (!followsFinalDeadline) return milestones;
+  return milestones.map((milestone, index) => (
+    index === MAX_MILESTONES - 1 ? { ...milestone, dueAt: deadline } : milestone
+  ));
+}
+
 export function generateAgreementName(account, now = new Date()) {
   const timestamp = now.toISOString().replace(/[-:TZ.]/g, '').slice(0, 17);
   const walletSuffix = String(account || 'wallet').slice(-4).toUpperCase();

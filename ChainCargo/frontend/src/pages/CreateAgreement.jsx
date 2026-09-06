@@ -7,6 +7,7 @@ import {
   FIXED_MILESTONES,
   MIN_SCHEDULE_BUFFER_MS,
   generateAgreementName,
+  syncFinalMilestoneDueAt,
   toDateTimeLocalValue,
   validateAgreementBasics,
   validateAgreementDraft,
@@ -63,6 +64,7 @@ function CreateAgreement() {
   const [milestones, setMilestones] = useState(
     FIXED_MILESTONES.map((milestone) => ({ ...milestone, dueAt: '' })),
   );
+  const [finalMilestoneFollowsDeadline, setFinalMilestoneFollowsDeadline] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [registeredCarriers, setRegisteredCarriers] = useState([]);
@@ -143,23 +145,44 @@ function CreateAgreement() {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
     if (name === 'carrier') setError('');
-    if (name === 'deadline' && value) {
-      const deadlineMs = new Date(value).getTime();
-      const invalidCount = milestones.filter(
-        (milestone) => milestone.dueAt &&
-          new Date(milestone.dueAt).getTime() > deadlineMs,
-      ).length;
+    if (name === 'deadline') {
+      const deadlineMs = value ? new Date(value).getTime() : 0;
+      const conflictsWithDeadline = (milestone, index) => {
+        if (!milestone.dueAt || !deadlineMs || (finalMilestoneFollowsDeadline && index === 1)) return false;
+        const dueMs = new Date(milestone.dueAt).getTime();
+        return dueMs > deadlineMs || (finalMilestoneFollowsDeadline && index === 0 && dueMs >= deadlineMs);
+      };
+      const invalidCount = milestones.filter(conflictsWithDeadline).length;
+      setMilestones((current) => syncFinalMilestoneDueAt(
+        current.map((milestone, index) => (
+          conflictsWithDeadline(milestone, index) ? { ...milestone, dueAt: '' } : milestone
+        )),
+        value,
+        finalMilestoneFollowsDeadline,
+      ));
       if (invalidCount) {
-        setMilestones((current) => current.map((milestone) => (
-          milestone.dueAt && new Date(milestone.dueAt).getTime() > deadlineMs
-            ? { ...milestone, dueAt: '' }
-            : milestone
-        )));
         setError(
           `${invalidCount} milestone date${invalidCount === 1 ? ' was' : 's were'} cleared because it exceeded the new final deadline.`,
         );
       }
     }
+  };
+
+  const toggleFinalMilestoneDeadline = (event) => {
+    const followsFinalDeadline = event.target.checked;
+    const pickupDueMs = milestones[0].dueAt ? new Date(milestones[0].dueAt).getTime() : 0;
+    const deadlineMs = form.deadline ? new Date(form.deadline).getTime() : 0;
+    if (followsFinalDeadline && pickupDueMs && deadlineMs && pickupDueMs >= deadlineMs) {
+      setError('Milestone 1 must be earlier than the Final Delivery Deadline.');
+      return;
+    }
+    setFinalMilestoneFollowsDeadline(followsFinalDeadline);
+    setMilestones((current) => syncFinalMilestoneDueAt(
+      current,
+      form.deadline,
+      followsFinalDeadline,
+    ));
+    setError('');
   };
 
   const updateMilestone = (index, field, value) => {
@@ -175,6 +198,10 @@ function CreateAgreement() {
       }
       if (deadlineMs && dueMs > deadlineMs) {
         setError(`Milestone ${index + 1} cannot be later than the final deadline.`);
+        return;
+      }
+      if (index === 0 && finalMilestoneFollowsDeadline && deadlineMs && dueMs >= deadlineMs) {
+        setError('Milestone 1 must be earlier than the Final Delivery Deadline.');
         return;
       }
       setError('');
@@ -496,8 +523,8 @@ function CreateAgreement() {
             {carrierDirectoryError && <div className="notice error">{carrierDirectoryError}</div>}
             {!carriersLoading && !registeredCarriers.length && !carrierDirectoryError && (
               <div className="notice">
-                No Carrier is registered yet. Open Setup, authorize a second MetaMask account,
-                and register it as Carrier before continuing.
+                No Carrier is registered yet. Authorize a different MetaMask account and register
+                it as Carrier before continuing.
               </div>
             )}
             <label>
@@ -559,6 +586,16 @@ function CreateAgreement() {
                   {errorTarget === 'percentage' && index === 0 && <small className="field-error">{error}</small>}
                 </label>
                 <div>
+                  {index === 1 && (
+                    <label className="deadline-sync-control">
+                      <input
+                        checked={finalMilestoneFollowsDeadline}
+                        onChange={toggleFinalMilestoneDeadline}
+                        type="checkbox"
+                      />
+                      Use Final Delivery Deadline for Milestone 2
+                    </label>
+                  )}
                   <label>
                     Due date
                     <input
@@ -566,6 +603,7 @@ function CreateAgreement() {
                       required
                       min={getMilestoneMinimum(index)}
                       max={form.deadline || undefined}
+                      disabled={index === 1 && finalMilestoneFollowsDeadline}
                       step="60"
                       type="datetime-local"
                       value={milestone.dueAt}
@@ -574,7 +612,9 @@ function CreateAgreement() {
                     <small>
                       {index === 0
                         ? 'Must be in the future and no later than the final deadline.'
-                        : `Must be later than milestone ${index} and no later than the final deadline.`}
+                        : finalMilestoneFollowsDeadline
+                          ? 'Automatically follows the Final Delivery Deadline.'
+                          : `Must be later than milestone ${index} and no later than the final deadline.`}
                     </small>
                     {errorTarget === `milestone-${index}` && <small className="field-error">{error}</small>}
                   </label>

@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { ethers } from 'ethers';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { useContract } from '../context/ContractContext';
 import { ROLE_LABELS } from '../contracts/abi';
 
 function WalletAccess() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const chooseMode = searchParams.get('choose') === '1';
+  const [selectionConfirmed, setSelectionConfirmed] = useState(!chooseMode);
   const { account, authenticateWallet, authorizedAccounts, chooseAccountInMetaMask,
     connectWallet, disconnectWallet, error, formatAddress, isAuthenticated, isAuthenticating, isConnecting,
     networkName, selectAuthorizedAccount } = useWallet();
@@ -58,13 +61,19 @@ function WalletAccess() {
   }, [authorizedAccounts, getReadContract, isCorrectNetwork]);
 
   useEffect(() => {
+    if (chooseMode && !selectionConfirmed) return;
     if (!isAuthenticated || !account) return;
     const selectedDetails = details[account.toLowerCase()];
     if (!selectedDetails) return;
     navigate(selectedDetails.role === 'Unregistered' ? '/register' : '/dashboard', {
       replace: true,
     });
-  }, [account, details, isAuthenticated, navigate]);
+  }, [account, chooseMode, details, isAuthenticated, navigate, selectionConfirmed]);
+
+  const selectAccount = (address) => {
+    setSelectionConfirmed(true);
+    selectAuthorizedAccount(address);
+  };
 
   return (
     <div className="auth-shell">
@@ -109,7 +118,7 @@ function WalletAccess() {
                 const selected = address.toLowerCase() === account?.toLowerCase();
                 const detail = details[address.toLowerCase()];
                 return (
-                  <button className={`selected-wallet-details wallet-detail-choice ${selected ? 'current' : ''}`} key={address} onClick={() => selectAuthorizedAccount(address)} type="button">
+                  <button className={`selected-wallet-details wallet-detail-choice ${selected ? 'current' : ''}`} key={address} onClick={() => selectAccount(address)} type="button">
                     <div className="selected-wallet-heading">
                       <span className="wallet-identicon" aria-hidden="true">{detail?.name?.charAt(0) || 'W'}</span>
                       <span><small>{selected ? 'Selected account' : 'Authorized account'}</small><strong>{detailsLoading && !detail ? 'Loading profile…' : detail?.name}</strong><code title={address}>{formatAddress(address)}</code></span>

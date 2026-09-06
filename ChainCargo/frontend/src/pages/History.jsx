@@ -27,8 +27,9 @@ const eventDetails = {
   AgreementCompleted: () => 'All milestones paid and the agreement completed',
   Refunded: (args) => `${ethers.formatEther(args.amount)} ETH returned to the shipper`,
   DisputeOpened: (args) => `Dispute opened: ${args.reason}`,
+  DisputeResponseSubmitted: (args) => `Other party response submitted: ${args.responseDetails}`,
   DisputeResolved: (args) => `Resolved: ${ethers.formatEther(args.shipperAmount)} ETH to shipper and ${ethers.formatEther(args.carrierAmount)} ETH to carrier`,
-  DisputeContinued: (args) => `Arbitrator ${args.evidenceApproved ? 'approved the evidence' : 'requested replacement evidence'} for milestone ${Number(args.milestoneIndex) + 1}; deadlines restored by ${Number(args.pausedSeconds)} seconds`,
+  DisputeContinued: (args) => `Arbitrator ${args.evidenceApproved ? 'approved the evidence' : 'requested replacement evidence'} for milestone ${Number(args.milestoneIndex) + 1}; reason: ${args.resolutionReason}; deadlines restored by ${Number(args.pausedSeconds)} seconds`,
 };
 
 function History() {

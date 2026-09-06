@@ -10,8 +10,8 @@ import {
 import { verifyMessage } from 'ethers';
 
 const WalletContext = createContext(null);
-const SELECTED_ACCOUNT_KEY = 'chaincargo.selectedAccount';
-const WALLET_SESSION_KEY = 'chaincargo.walletSession';
+const SELECTED_ACCOUNT_KEY = 'cargoseal.selectedAccount';
+const WALLET_SESSION_KEY = 'cargoseal.walletSession';
 
 function readWalletSession() {
   if (typeof window === 'undefined') return null;

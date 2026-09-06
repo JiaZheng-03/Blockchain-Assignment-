@@ -32,6 +32,7 @@ const errorMessages = {
   AcceptancePeriodClosed: 'The Carrier response deadline has passed. The Shipper may now cancel and recover the escrow.',
   NoEvidenceResubmissionWindow: 'There is no time available for replacement evidence before the next milestone or Final Delivery Deadline.',
   NoActiveDispute: 'This agreement does not have an active dispute to resolve.',
+  DisputeResponseAlreadySubmitted: 'The other party has already submitted a response for this dispute.',
 };
 
 function findRevertData(error) {

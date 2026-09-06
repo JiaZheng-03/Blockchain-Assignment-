@@ -1,6 +1,6 @@
 const lower = (value) => String(value || '').toLowerCase();
 export const notificationScope = (chainId, address, account) => `${Number(chainId)}:${lower(address)}:${lower(account)}`;
-export const notificationKey = (scope, log) => `chaincargo:notification:${scope}:${lower(log.transactionHash)}:${log.index ?? log.logIndex}`;
+export const notificationKey = (scope, log) => `cargoseal:notification:${scope}:${lower(log.transactionHash)}:${log.index ?? log.logIndex}`;
 
 // Persist before updating the UI/navigation. Memory is only a storage-failure fallback.
 export function createNotificationReadStore(getStorage) {
@@ -53,8 +53,9 @@ export function eventNotification(event, agreement, account, arbitrator) {
     DeadlineExtensionApproved: [carrier, 'Deadline extension approved.'],
     DeadlineExtensionRejected: [carrier, 'Deadline extension rejected.'],
     DisputeOpened: [(participant && lower(account) !== lower(args.openedBy)) || lower(account) === lower(arbitrator), `Dispute opened: ${args.reason || 'Arbitrator review requested.'}`],
+    DisputeResponseSubmitted: [(participant && lower(account) !== lower(args.respondedBy)) || lower(account) === lower(arbitrator), `Dispute response submitted: ${args.responseDetails}`],
     DisputeResolved: [participant, 'The Arbitrator settled the dispute and distributed the remaining escrow.'],
-    DisputeContinued: [participant, `The Arbitrator ${args.evidenceApproved ? 'approved the evidence' : 'requested replacement evidence'}. Agreement resumed.`],
+    DisputeContinued: [participant, `The Arbitrator ${args.evidenceApproved ? 'approved the evidence' : 'requested replacement evidence'}. Reason: ${args.resolutionReason}. Agreement resumed.`],
     AgreementCompleted: [participant, 'Agreement completed.'],
     Refunded: [shipper, 'Escrow refund paid to your wallet.'],
     UnacceptedAgreementCancelled: [carrier || shipper, 'Unaccepted agreement cancelled and escrow refunded.'],

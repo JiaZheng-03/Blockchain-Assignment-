@@ -5,6 +5,7 @@ import {
   MAX_MILESTONES,
   generateAgreementName,
   normalizeAgreementName,
+  syncFinalMilestoneDueAt,
   validateAgreementDraft,
 } from '../src/utils/agreementValidation.js';
 
@@ -29,12 +30,14 @@ import {
   getSepoliaTransactionUrl,
 } from '../src/utils/sepoliaExplorer.js';
 import { addressesEqual } from '../src/utils/address.js';
+import { getDisputePayout } from '../src/utils/disputeResolution.js';
 import {
   buildAgreementIds,
   isArbitrationAgreement,
 } from '../src/utils/arbitration.js';
 import {
   createSupabaseProofUri,
+  canOpenEvidenceLink,
   createUploadAuthorizationMessage,
   evidenceHashMatches,
   getEvidencePublicUrl,
@@ -61,6 +64,17 @@ import {
   getCarrierReputationTier,
   readCarrierReputation,
 } from '../src/utils/carrierReputation.js';
+
+test('syncs the final milestone deadline by default and preserves a Shipper override', () => {
+  const milestones = FIXED_MILESTONES.map((milestone, index) => ({
+    ...milestone,
+    dueAt: `2026-09-0${index + 6}T10:00`,
+  }));
+  const synced = syncFinalMilestoneDueAt(milestones, '2026-09-10T18:00', true);
+  assert.equal(synced[0].dueAt, milestones[0].dueAt);
+  assert.equal(synced[1].dueAt, '2026-09-10T18:00');
+  assert.deepEqual(syncFinalMilestoneDueAt(synced, '2026-09-11T18:00', false), synced);
+});
 import {
   deploymentMatchesContract,
   resolveContractAddress,
@@ -270,11 +284,23 @@ test('cryptographically verifies uploaded file bytes before milestone confirmati
   assert.equal(proofHash, ethers.keccak256(receipt));
   assert.equal(evidenceHashMatches(hashEvidenceBytes(receipt), proofHash), true);
   assert.equal(evidenceHashMatches(hashEvidenceBytes(altered), proofHash), false);
+  assert.equal(canOpenEvidenceLink({ isShipper: true, verificationStatus: undefined }), false);
+  assert.equal(canOpenEvidenceLink({ isShipper: true, verificationStatus: 'failed' }), false);
+  assert.equal(canOpenEvidenceLink({ isShipper: true, verificationStatus: 'verified' }), true);
+  assert.equal(canOpenEvidenceLink({ isShipper: false, verificationStatus: undefined }), true);
+});
+
+test('builds clear all-to-Shipper, half, and all-to-Carrier dispute payouts', () => {
+  assert.deepEqual(getDisputePayout(10n, 'shipper'), { shipperAmount: 10n, carrierAmount: 0n });
+  assert.deepEqual(getDisputePayout(10n, 'half'), { shipperAmount: 5n, carrierAmount: 5n });
+  assert.deepEqual(getDisputePayout(10n, 'carrier'), { shipperAmount: 0n, carrierAmount: 10n });
+  assert.deepEqual(getDisputePayout(11n, 'half'), { shipperAmount: 5n, carrierAmount: 6n });
+  assert.throws(() => getDisputePayout(10n, 'unknown'), /Unknown dispute payout/);
 });
 
 test('builds safe Supabase evidence links and wallet upload authorization messages', () => {
   const projectRef = 'abcdefghijklmnopqrst';
-  const bucket = 'chaincargo-evidence';
+  const bucket = 'cargoseal-evidence';
   const objectPath = `11155111/${carrier.toLowerCase()}/7/1/12345678-1234-1234-1234-123456789abc.pdf`;
   const proofURI = createSupabaseProofUri({ bucket, objectPath, projectRef });
   assert.equal(supabaseProjectRefFromUrl(`https://${projectRef}.supabase.co/`), projectRef);

@@ -9,6 +9,7 @@ const cases = {
   MilestoneProofSubmitted: ['0xshipper'], EvidenceRevisionRequested: ['0xcarrier'], MilestoneConfirmed: ['0xcarrier'],
   DeadlineExtensionRequested: ['0xshipper'], DeadlineExtensionApproved: ['0xcarrier'], DeadlineExtensionRejected: ['0xcarrier'],
   DisputeOpened: ['0xcarrier', '0xarbitrator'], DisputeResolved: ['0xshipper', '0xcarrier'],
+  DisputeResponseSubmitted: ['0xshipper', '0xarbitrator'],
   DisputeContinued: ['0xshipper', '0xcarrier'], AgreementCompleted: ['0xshipper', '0xcarrier'], Refunded: ['0xshipper'],
 };
 const abi = new Interface(ESCROW_ABI);
@@ -16,7 +17,17 @@ for (const [name, recipients] of Object.entries(cases)) {
   test(`${name} routes only to its intended recipients and exists in the deployed ABI`, () => {
     assert.ok(abi.getEvent(name));
     for (const account of ['0xshipper', '0xcarrier', '0xarbitrator', '0xunrelated']) {
-      const item = eventNotification({ name, args: { agreementId: 2n, openedBy: '0xshipper', reason: 'Damaged cargo' } }, agreement, account.toUpperCase(), '0xarbitrator');
+      const item = eventNotification({
+        name,
+        args: {
+          agreementId: 2n,
+          openedBy: '0xshipper',
+          reason: 'Damaged cargo',
+          respondedBy: '0xcarrier',
+          responseDetails: 'Cargo was delivered intact',
+          resolutionReason: 'The evidence proves delivery',
+        },
+      }, agreement, account.toUpperCase(), '0xarbitrator');
       assert.equal(Boolean(item), recipients.includes(account));
       if (item) { assert.equal(item.title, 'Cargo A'); assert.equal(item.agreementId, '2'); }
     }

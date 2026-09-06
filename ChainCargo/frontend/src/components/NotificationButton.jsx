@@ -7,8 +7,8 @@ import { useAgreements } from '../hooks/useAgreements';
 import { getAgreementActionDeadline, getDeadlineState } from '../utils/deadlineAlerts';
 import { useNotifications } from '../context/NotificationContext';
 
-const NOTIFICATION_PREFERENCE_KEY = 'chaincargoDeadlineNotifications';
-const NOTIFICATION_ALERT_PREFIX = 'chaincargoDeadlineAlert';
+const NOTIFICATION_PREFERENCE_KEY = 'cargosealDeadlineNotifications';
+const NOTIFICATION_ALERT_PREFIX = 'cargosealDeadlineAlert';
 
 function NotificationButton() {
   const containerRef = useRef(null);

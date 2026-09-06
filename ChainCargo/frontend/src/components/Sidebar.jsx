@@ -5,7 +5,7 @@ import { useProfile } from '../hooks/useProfile';
 import Icon from './Icon';
 
 export default function Sidebar({ onClose }) {
-  const { account, formatAddress, isAuthenticated } = useWallet();
+  const { account, formatAddress } = useWallet();
   const { expectedNetworkName, deploymentStatus } = useContract();
   const { isShipper, isCarrier, isArbitrator, profile, roleLabel } = useProfile();
   const groups = [
@@ -17,10 +17,6 @@ export default function Sidebar({ onClose }) {
     ] },
     { label: 'Account', items: [
       ['/profile', 'Wallet & profile', 'wallet'],
-      ...(!isAuthenticated ? [
-        ['/setup', 'Network setup', 'settings'],
-        ['/register', 'Wallet registration', 'user'],
-      ] : []),
     ] },
   ];
   return (
@@ -46,12 +42,6 @@ export default function Sidebar({ onClose }) {
         ))}
       </nav>
       <div className="sidebar-bottom">
-        <div className="sidebar-note">
-          <span className="sidebar-note-icon"><Icon name="shield" /></span>
-          <strong>Every milestone matters.</strong>
-          <p>Evidence you can verify.<br />Payments you can trust.</p>
-          <Link to="/setup" onClick={onClose}>Explore your workspace <Icon name="arrow" size={15} /></Link>
-        </div>
         <div className="sidebar-network"><span className={`status-dot ${deploymentStatus === 'ready' ? '' : 'muted'}`} /><span>{expectedNetworkName}</span><small>TESTNET</small></div>
         <Link className="sidebar-account" to={account ? '/profile' : '/login'} onClick={onClose}>
           <span className="account-avatar">{profile?.name?.slice(0, 2).toUpperCase() || <Icon name="user" size={18} />}</span>

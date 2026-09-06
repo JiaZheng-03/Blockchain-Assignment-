@@ -27,11 +27,11 @@ CargoSeal is a full-stack Ethereum dApp for milestone-based logistics agreements
 - Supabase Storage for shared off-chain evidence files
 - Express signing API for protected, wallet-authorized Supabase uploads
 
-## Sepolia setup
+## Sepolia deployment
 
 Requirements: Node.js 22 or newer, npm, and the MetaMask browser extension.
 
-`ChainCargo/frontend` is the only application root. From that directory, install dependencies:
+`frontend` is the CargoSeal application root. From that directory, install dependencies:
 
 ```bash
 npm install
@@ -49,8 +49,8 @@ DEPLOYER_PRIVATE_KEY=0xYOUR_DEPLOYER_WALLET_PRIVATE_KEY
 VITE_ESCROW_CHAIN_ID=11155111
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_SECRET_KEY=sb_secret_your-server-secret
-SUPABASE_STORAGE_BUCKET=chaincargo-evidence
-CHAINCARGO_API_PORT=3001
+SUPABASE_STORAGE_BUCKET=cargoseal-evidence
+CARGOSEAL_API_PORT=3001
 ```
 
 Create one Supabase project for the team and copy its Project URL and a server Secret key from the project's Connect/API Keys settings. The Express API automatically creates or updates the dedicated bucket as public-read with the application's 10 MB and MIME-type restrictions. Uploads still require a current Carrier's MetaMask signature and valid on-chain milestone state.
@@ -71,11 +71,11 @@ Start the web app:
 npm run dev
 ```
 
-Open the Vite URL, then open **Setup**. The page checks MetaMask, Sepolia, deployment, and registration in order.
+Open the Vite URL and choose **Connect MetaMask**. Select an authorized wallet, sign in, and register its role when prompted.
 
 ## MetaMask configuration
 
-CargoSeal asks MetaMask to switch to Sepolia from the **Setup** page:
+CargoSeal asks MetaMask to switch to Sepolia from the wallet access flow:
 
 - Network name: `Sepolia`
 - Chain ID: `11155111`
@@ -86,7 +86,7 @@ The Dashboard and Profile read the balance of the currently selected MetaMask ac
 
 ## Suggested demonstration
 
-1. Open **Setup**, connect the first MetaMask account, switch to Sepolia, and register it as **Shipper**.
+1. Connect the first MetaMask account, switch to Sepolia, and register it as **Shipper**.
 2. Authorize a second MetaMask account and register it as **Carrier**.
 3. Switch back to the Shipper and open **Create Agreement**. Choose the Carrier, select the milestone payment split, set chronological due dates, and fund the escrow.
 4. Switch to the Carrier and accept the agreement. Rejecting it closes the agreement and returns the full escrow to the Shipper.
@@ -159,9 +159,9 @@ After MetaMask connection and signed login on the configured chain, CargoSeal sc
 
 Received updates use one dialog with Previous, Next, Mark as Read, Close, and View Agreement. Previous/Next only navigate. Mark as Read advances to the next unread update (wrapping to the first if needed). Mark All as Read appears when multiple unread updates exist and includes dismissed updates in the bell. View Agreement marks its update read before navigating, then dismisses the remaining popup queue. Close and Escape dismiss the queue without marking anything read for the current login session. Unread updates can appear again after reloading or signing in again; read status persists across reloads. Read updates remain in the bell as history, but only unread received updates count in its badge. Existing deadline alerts remain listed separately. The dialog waits for existing action-result or confirmation popups to close.
 
-Read keys use `chaincargo:notification:<decimal chain ID>:<lowercase contract>:<lowercase wallet>:<transaction hash>:<log index>`. Reads synchronize between tabs through storage events. If localStorage is unavailable, read/dismiss state works in memory for the current page session. Each browser stores its own read state.
+Read keys use `cargoseal:notification:<decimal chain ID>:<lowercase contract>:<lowercase wallet>:<transaction hash>:<log index>`. Reads synchronize between tabs through storage events. If localStorage is unavailable, read/dismiss state works in memory for the current page session. Each browser stores its own read state.
 
-Refund availability has no on-chain event. It is detected from an Active agreement with a Pending current milestone when the latest block timestamp exceeds its due date. Its key uses the creation transaction/log plus agreement ID, milestone index, and due date. Observed refund notices are cached locally under `chaincargo:refund-notices:<scope>` to retain them after settlement. Their text directs users to check current agreement status. The separate Refunded event confirms actual payment.
+Refund availability has no on-chain event. It is detected from an Active agreement with a Pending current milestone when the latest block timestamp exceeds its due date. Its key uses the creation transaction/log plus agreement ID, milestone index, and due date. Observed refund notices are cached locally under `cargoseal:refund-notices:<scope>` to retain them after settlement. Their text directs users to check current agreement status. The separate Refunded event confirms actual payment.
 
 ### Manual test
 
