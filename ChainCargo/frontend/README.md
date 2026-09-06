@@ -1,193 +1,349 @@
 # CargoSeal
 
-CargoSeal is a full-stack Ethereum dApp for milestone-based logistics agreements. A Shipper funds an escrow in Ether, a Carrier commits cryptographic evidence for two fixed checkpoints, and Shipper-confirmed milestones release payment. Missed deadlines enable deterministic refunds, while disputed escrow can be split by the contract arbitrator.
+CargoSeal is a full-stack Ethereum logistics escrow dApp. A Shipper funds an agreement, an assigned Carrier submits milestone evidence, and verified milestones release ETH from the smart contract. The system also handles deadlines, reputation, disputes, notifications, and Arbitrator decisions.
 
-## Assignment requirements covered
+This project is intended for university coursework and Sepolia demonstrations. It has not received a production security audit.
 
-| Requirement | Implementation |
-| --- | --- |
-| Registration and authentication | MetaMask wallet authentication plus on-chain Shipper/Carrier registration; the deployer is the only eligible Arbitrator |
-| Agreement creation | Auto-generated per-Shipper name, Carrier, notes, fully funded escrow value, and deadlines for the two fixed milestones |
-| Funding | `createAgreement` is payable and enforces that the Shipper-selected milestone payouts equal the deposited escrow |
-| Milestones and payouts | Carrier uploads evidence to a shared Supabase Storage bucket and submits its `keccak256` file hash plus storage reference; the Shipper verifies it before confirmation atomically releases payment |
-| Carrier reputation | Each confirmed milestone awards the assigned Carrier 10 on-chain points. A Shipper refund for a missed evidence deadline deducts 10 points once, with a minimum score of zero. Approved extensions use the updated deadline; timely submitted evidence is protected from delay penalties. |
-| Refunds and disputes | Only the Shipper can refund an unsubmitted overdue milestone; either agreement participant can request a dispute with details; the Carrier can also escalate evidence after one hour without a Shipper response; the deployer/arbitrator resolves the remaining split |
-| Transaction history | Dashboard lists wallet agreements and History reconstructs chronological activity from contract events |
-| Smart-contract UI integration | React, ethers v6, MetaMask, live contract reads/writes, transaction confirmations, and error reporting |
+## Features
 
-> Ethereum contracts cannot execute themselves at a wall-clock time. CargoSeal automatically detects refund eligibility and notifies the Shipper, but the Shipper must submit the refund transaction in MetaMask.
+- MetaMask connection, account selection, signed login, and on-chain roles
+- Shipper, Carrier, and fixed-deployer Arbitrator workflows
+- Fully funded agreements with Carrier acceptance or rejection
+- Cargo pickup and Final delivery milestones with a custom payment split
+- Wallet-authorized Supabase evidence uploads
+- Keccak-256 file hashes and integrity verification before payment
+- Evidence rejection and replacement submission
+- Deadline extensions, refunds, and on-chain Carrier reputation
+- Participant disputes, additional Arbitrator questions, and reasoned decisions
+- Event-based transaction history and role-specific notifications
+- Sepolia deployment and an optional local Hardhat demo
 
 ## Technology
 
-- Solidity 0.8.24
-- Hardhat and Chai contract tests
-- React 19 and Vite
-- ethers v6
+| Layer | Technology |
+| --- | --- |
+| Smart contract | Solidity 0.8.24 |
+| Development and tests | Hardhat, Chai |
+| Frontend | React 19, React Router, Vite |
+| Blockchain client | ethers v6, MetaMask |
+| API | Express |
+| Evidence storage | Supabase Storage |
+| Default network | Ethereum Sepolia (`11155111`) |
+
+## User Roles
+
+### Shipper
+
+- Registers a Shipper wallet and display name.
+- Creates an agreement and deposits the complete escrow.
+- Selects a registered Carrier, deadlines, and milestone percentages.
+- Verifies, confirms, or rejects evidence.
+- Approves or rejects extension requests.
+- Opens or responds to disputes and claims eligible refunds.
+
+### Carrier
+
+- Registers a Carrier wallet and display name.
+- Accepts or rejects an assigned agreement within 24 hours.
+- Provides a reason when rejecting an agreement.
+- Uploads evidence and commits its hash on-chain.
+- May submit later-milestone evidence before an earlier milestone is confirmed.
+- Requests extensions or Arbitrator action when eligible.
+- Opens and responds to disputes.
+
+### Arbitrator
+
+- Uses the wallet that deployed the contract.
+- Must register the deployer wallet as Arbitrator after deployment.
+- Reviews both parties, evidence, dispute reasons, and responses.
+- May request more information from either participant.
+- Approves a milestone, requests replacement evidence, or divides the remaining escrow.
+- Must record a reason and act within 24 hours after the dispute opens.
+
+## Agreement Workflow
+
+1. The Shipper and Carrier register separate MetaMask wallets.
+2. The Shipper creates an agreement and deposits all milestone funding.
+3. The Carrier accepts, or rejects with a reason and refunds the Shipper.
+4. The Carrier uploads milestone evidence.
+5. The API validates the signed upload request and current contract state.
+6. The contract stores the Supabase reference and Keccak-256 file hash.
+7. The Shipper downloads the file and verifies it against the on-chain hash.
+8. The Shipper confirms and pays, or rejects it for replacement evidence.
+9. After both milestones are confirmed, the agreement becomes Completed.
+
+## Business Rules
+
+- Every agreement has exactly two milestones: Cargo pickup and Final delivery.
+- Milestone deadlines must be chronological and cannot exceed the Final Delivery Deadline.
+- The complete escrow is deposited at agreement creation.
+- Milestone payouts must total exactly 100% of the deposit.
+- The Carrier has 24 hours to accept or reject a new agreement.
+- Evidence submitted on time remains reviewable after its deadline.
+- After one hour without a Shipper evidence decision, the Carrier may request arbitration.
+- Rejected evidence receives up to 24 hours for replacement without passing the next deadline.
+- The Carrier can request one 24-hour extension during the final 24 hours before the current milestone deadline.
+- An approved extension affects only that milestone and allocates 5% of its payout to the Shipper.
+- Confirming a milestone awards 10 Carrier reputation points.
+- A missed-evidence refund deducts 10 points once, with a minimum score of zero.
+- Either participant may open a dispute while the workflow permits it.
+- A dispute pauses affected deadlines; later milestone evidence may still be submitted.
+- Additional Arbitrator questions do not restart the 24-hour Arbitrator deadline.
+- After 24 hours without an Arbitrator decision, the Arbitrator is locked out. Either participant may submit a cancellation transaction that refunds all remaining escrow to the Shipper.
+- A smart contract cannot wake itself up at a future time. Refunds and timeout cancellations require a MetaMask transaction.
+
+## Prerequisites
+
+- Node.js 22 or newer
+- npm
 - MetaMask
-- Supabase Storage for shared off-chain evidence files
-- Express signing API for protected, wallet-authorized Supabase uploads
+- Sepolia ETH for transaction gas
+- A Sepolia RPC endpoint
+- A Supabase project for evidence storage
 
-## Sepolia deployment
+## Installation
 
-Requirements: Node.js 22 or newer, npm, and the MetaMask browser extension.
-
-`frontend` is the CargoSeal application root. From that directory, install dependencies:
+Run from the `frontend` directory:
 
 ```bash
 npm install
 ```
 
-Create `.env` from `.env.example`:
+Create `.env` on Windows PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
+On macOS or Linux:
+
+```bash
+cp .env.example .env
+```
+
+## Environment Variables
+
 ```env
 SEPOLIA_RPC_URL=https://your-sepolia-rpc-provider.example/v2/api-key
-DEPLOYER_PRIVATE_KEY=0xYOUR_DEPLOYER_WALLET_PRIVATE_KEY
+DEPLOYER_PRIVATE_KEY=YOUR_DEPLOYER_PRIVATE_KEY
+
+VITE_ESCROW_CONTRACT_ADDRESS=
 VITE_ESCROW_CHAIN_ID=11155111
-SUPABASE_URL=https://your-project-ref.supabase.co
-SUPABASE_SECRET_KEY=sb_secret_your-server-secret
+
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_YOUR_SERVER_SECRET
 SUPABASE_STORAGE_BUCKET=cargoseal-evidence
 CARGOSEAL_API_PORT=3001
 ```
 
-Create one Supabase project for the team and copy its Project URL and a server Secret key from the project's Connect/API Keys settings. The Express API automatically creates or updates the dedicated bucket as public-read with the application's 10 MB and MIME-type restrictions. Uploads still require a current Carrier's MetaMask signature and valid on-chain milestone state.
+- Never commit `.env`.
+- The private key may include or omit `0x` and needs Sepolia ETH for deployment.
+- `SUPABASE_SECRET_KEY` is server-only. Never expose it through a `VITE_` variable.
+- Normally leave `VITE_ESCROW_CONTRACT_ADDRESS` empty so the app uses `deployment.json`.
+- Use an override address only for a deliberate compatible deployment.
 
-Never commit `.env`. The deployer wallet needs a small amount of Sepolia ETH for gas. `SUPABASE_SECRET_KEY` bypasses Supabase Row Level Security, is server-only, and must never use a `VITE_` prefix or be placed in browser code. Use the newer `sb_secret_...` key when available; the legacy `SUPABASE_SERVICE_ROLE_KEY` environment variable is also supported.
+## Supabase Setup
 
-Deploy the contract once:
+1. Create a Supabase project.
+2. Put its Project URL and server Secret key in `.env`.
+3. Keep the default bucket name or configure another valid name.
+4. Start the API. It creates or updates the bucket with a 10 MB limit and permits JPEG, PNG, WebP, and PDF evidence.
+
+The current bucket is public-read. Uploads require a valid Carrier signature and on-chain permission, but anyone with the object URL can read a file. Use demonstration files only. Production should use a private bucket with participant-authorized, short-lived download URLs.
+
+## Sepolia Deployment
+
+Run all checks first:
+
+```bash
+npm run check
+```
+
+Deploy:
 
 ```bash
 npm run deploy:sepolia
 ```
 
-The script validates chain `11155111` and writes the new Sepolia address and generated ABI only to `src/contracts/deployment.json`. The currently saved contract predates version 2, so it must be redeployed once before fixed milestones, confirmation payments, and Supabase uploads are enabled.
+The script validates chain `11155111`, deploys `LogisticsEscrow`, and writes its address, block number, chain ID, and generated ABI to `src/contracts/deployment.json`.
 
-Start the web app:
+After deployment:
+
+1. Commit the updated `deployment.json` for the team.
+2. Connect the deployer wallet and register it as Arbitrator.
+3. Register separate Shipper and Carrier wallets.
+
+Every Solidity change requires a new deployment. React, CSS, API, and documentation-only changes do not.
+
+## Run the Application
 
 ```bash
 npm run dev
 ```
 
-Open the Vite URL and choose **Connect MetaMask**. Select an authorized wallet, sign in, and register its role when prompted.
+Open the Local URL printed by Vite, normally `http://localhost:5173`. Vite may select another port if `5173` is occupied. The evidence API runs at `http://127.0.0.1:3001`; keep the terminal running during uploads.
 
-## MetaMask configuration
+## MetaMask
 
-CargoSeal asks MetaMask to switch to Sepolia from the wallet access flow:
+Use Sepolia:
 
-- Network name: `Sepolia`
-- Chain ID: `11155111`
-- Currency: `Sepolia ETH`
-- Explorer: `https://sepolia.etherscan.io`
+| Setting | Value |
+| --- | --- |
+| Network | Sepolia |
+| Chain ID | `11155111` |
+| Currency | Sepolia ETH |
+| Explorer | `https://sepolia.etherscan.io` |
 
-The Dashboard and Profile read the balance of the currently selected MetaMask account through MetaMask's Sepolia provider. Account and network changes refresh the displayed balance automatically.
+Login steps:
 
-## Suggested demonstration
+1. Click **Connect MetaMask** and unlock MetaMask if required.
+2. Authorize one or more accounts.
+3. Select an authorized account in CargoSeal.
+4. Sign the free login message; it does not create a transaction.
+5. Register the wallet if it has no role.
 
-1. Connect the first MetaMask account, switch to Sepolia, and register it as **Shipper**.
-2. Authorize a second MetaMask account and register it as **Carrier**.
-3. Switch back to the Shipper and open **Create Agreement**. Choose the Carrier, select the milestone payment split, set chronological due dates, and fund the escrow.
-4. Switch to the Carrier and accept the agreement. Rejecting it closes the agreement and returns the full escrow to the Shipper.
-5. Upload evidence for either milestone to Supabase and submit its storage reference and file hash on-chain. The second milestone does not need to wait for the first payout.
-6. Switch to the Shipper, verify the stored file against the immutable hash, then confirm and pay or reject it so the Carrier can submit replacement evidence.
-7. During the final 24 hours before a current milestone deadline, the Carrier may request one 24-hour extension. The Shipper may approve it with 5% milestone compensation or reject it.
-8. If the Shipper does not act on submitted evidence for one hour, the Carrier may escalate it to the Arbitrator. If evidence was never submitted by its deadline, the Shipper may refund the remaining escrow.
-9. Open **History** to show the event timeline and transaction hashes.
+Logout clears the CargoSeal session and requests site disconnection. A website cannot force MetaMask itself to request a password on every login.
 
-The account that deploys the contract is the Arbitrator. It resolves a dispute requested by either participant or a Carrier escalation opened after the one-hour evidence review period.
+## Local Hardhat Demo
 
-If MetaMask remains on the same wallet, click **Switch account** in CargoSeal. Authorize both development accounts once, then the app's role-labelled account picker can switch the active workflow without guessing.
+Create the local environment file:
+
+```powershell
+Copy-Item .env.hardhat.example .env.hardhat
+```
+
+Run in separate terminals:
+
+```bash
+# Terminal 1
+npm run chain
+
+# Terminal 2
+npm run deploy:local
+npm run seed:local
+
+# Terminal 3
+npm run dev:local
+```
+
+Add a MetaMask network with RPC `http://127.0.0.1:8545`, chain ID `31337`, and currency `ETH`. Import only the disposable accounts printed by Hardhat. Local deployment updates only `deployment.local.json`.
 
 ## Commands
 
-```bash
-npm run check            # lint + all tests + production build
-npm test                 # UI tests followed by Solidity tests
-npm run compile          # compile Solidity
-npm run test:contracts   # run escrow tests
-npm run test:ui          # run validation, error, event, and MetaMask-network tests
-npm run lint             # lint React
-npm run build            # create production UI build
-npm run chain            # start local Hardhat node
-npm run deploy:local     # deploy and update deployment.local.json only
-npm run seed:local       # add repeatable demo roles and a funded agreement
-npm run demo:local       # deploy, then seed the local demo
-npm run deploy:sepolia   # deploy the coursework contract to Sepolia
-npm run dev              # start the protected Supabase API and Vite together
-npm run dev:local        # start API/UI on chain 31337 using .env.hardhat
-npm run dev:api          # start only the Supabase signing API on port 3001
-npm run dev:ui           # start only Vite (uploads require the API)
-npm start                # serve the production dist folder and Supabase API
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Run the Sepolia API and Vite |
+| `npm run dev:api` | Run only the evidence API |
+| `npm run dev:ui` | Run only Vite; upload still needs the API |
+| `npm run build` | Build the production frontend |
+| `npm start` | Serve `dist` and the API |
+| `npm run lint` | Run ESLint |
+| `npm run test:ui` | Run frontend utility and event tests |
+| `npm run test:contracts` | Run Hardhat tests |
+| `npm test` | Run UI and contract tests |
+| `npm run check` | Run lint, all tests, and build |
+| `npm run compile` | Compile Solidity |
+| `npm run deploy:sepolia` | Deploy to Sepolia |
+| `npm run chain` | Start the local Hardhat chain |
+| `npm run deploy:local` | Deploy to chain `31337` |
+| `npm run seed:local` | Create local demo roles and agreement |
+| `npm run demo:local` | Deploy and seed locally |
+| `npm run dev:local` | Run API/UI for the local chain |
+
+## Project Structure
+
+```text
+frontend/
+|-- contracts/                 Solidity contract
+|-- scripts/                   Deployment and seed scripts
+|-- test/                      Hardhat tests
+|-- test-ui/                   Frontend and event tests
+|-- src/
+|   |-- components/            Shared UI
+|   |-- context/               Wallet, contract, and notification state
+|   |-- contracts/             ABI and deployment metadata
+|   |-- hooks/                 Blockchain data hooks
+|   |-- pages/                 Application screens
+|   `-- utils/                 Validation, evidence, and history helpers
+|-- server.js                  Express/Supabase authorization API
+|-- hardhat.config.cjs         Compiler and network configuration
+`-- vite.config.js             Frontend and API proxy configuration
 ```
 
-The `chain`, `deploy:local`, `seed:local`, `demo:local`, and `dev:local` commands are development helpers only. The submitted application uses Sepolia. For local development, copy `.env.hardhat.example` to `.env.hardhat`, start `npm run chain` in one terminal, run `npm run deploy:local` and optionally `npm run seed:local` in another, then run `npm run dev:local`. Both the frontend and API will use chain 31337, `LOCAL_RPC_URL`, and `src/contracts/deployment.local.json`; the Sepolia deployment file is never overwritten.
+## Evidence Integrity
 
-## Date and deployment rules
+1. The frontend hashes the exact selected bytes.
+2. The Carrier signs a short-lived upload authorization.
+3. The API checks the signature, assignment, milestone, deadline, chain, and contract.
+4. Supabase stores the original file.
+5. Solidity stores its hash and `supabase://project-ref/bucket/path` reference.
+6. The Shipper downloads and hashes the stored file again.
+7. Confirmation remains disabled until both hashes match.
 
-- The final deadline must be at least one hour in the future. Every milestone deadline must still be in the future when the agreement is created.
-- Milestone dates must be strictly chronological and cannot be later than the final deadline.
-- Evidence submitted on time remains eligible for Shipper confirmation after the wall-clock deadline; it cannot be bypassed with a refund.
-- The browser displays `datetime-local` values in the computer's local timezone; Solidity stores the equivalent Unix timestamp in UTC.
-- Sepolia data persists across browser and computer restarts.
-- Supabase evidence is public to anyone who knows its object URL; use dummy or encrypted files, never sensitive commercial records.
-- Evidence references are stored as `supabase://project-ref/bucket/path`.
-- If the UI reports the wrong network, switch MetaMask to Sepolia chain `11155111`.
-- If the contract is deliberately redeployed to Sepolia, commit the updated `src/contracts/deployment.json` so every team member uses the same Sepolia address. Local deploys update only `deployment.local.json`.
+Never hash large files inside Solidity or trust arbitrary HTTP evidence links.
 
-## Contract security decisions
+## History and Notifications
 
-- Checks-effects-interactions and a re-entrancy lock protect ETH transfers.
-- Only registered shippers create agreements and only registered carriers can be selected.
-- Only the assigned carrier submits milestone evidence.
-- Only the immutable Shipper stored at creation can confirm evidence and release payouts.
-- Agreement names are unique per Shipper after case and whitespace normalization.
-- Every agreement has exactly Cargo pickup and Final delivery; the Shipper selects their payment percentages and the two payouts must total 100%.
-- Milestones are sequential, immutable after confirmation, and bounded by ordered deadlines.
-- The deposit must exactly equal all milestone payouts, preventing stranded or underfunded escrow.
-- Remaining escrow can be refunded only when the current required milestone is still unsubmitted after its deadline.
-- Only the original Shipper can submit that refund transaction.
-- Either the Shipper or assigned Carrier can request a dispute while the agreement is active, and the submitted reason is recorded in the event history for Arbitrator review.
-- The assigned Carrier can request Arbitrator action after submitted evidence has waited one hour without a Shipper decision.
+- Events are read beginning at the saved deployment block.
+- Notifications refresh every 30 seconds and after local transactions.
+- Recipient rules depend on the Shipper, Carrier, and Arbitrator roles.
+- Read state is isolated by browser, chain, contract, and wallet.
+- Dispute reasons, follow-up questions, responses, decisions, and resolution reasons are recorded in history.
+- Refund availability is calculated from the latest block timestamp because no refund event exists until a user submits the transaction.
 
-The contract is suitable for coursework and local/test-network demonstrations. A production deployment should additionally receive an independent security audit, decentralized oracle/e-signature policy, private evidence access controls, multisig arbitration, durable storage backups, and comprehensive operational monitoring.
+## Troubleshooting
 
-## Frontend agreement notifications
+### Vite port is already in use
 
-After MetaMask connection and signed login on the configured chain, CargoSeal scans contract logs from the deployment block and checks again every 30 seconds. The scan also refreshes after local transactions. No contract changes, notification backend, or browser notification permission are required. Existing browser deadline alerts and action-result/confirmation dialogs remain available.
+Open the alternative URL printed by Vite, or stop the older process before restarting.
 
-Received updates use one dialog with Previous, Next, Mark as Read, Close, and View Agreement. Previous/Next only navigate. Mark as Read advances to the next unread update (wrapping to the first if needed). Mark All as Read appears when multiple unread updates exist and includes dismissed updates in the bell. View Agreement marks its update read before navigating, then dismisses the remaining popup queue. Close and Escape dismiss the queue without marking anything read for the current login session. Unread updates can appear again after reloading or signing in again; read status persists across reloads. Read updates remain in the bell as history, but only unread received updates count in its badge. Existing deadline alerts remain listed separately. The dialog waits for existing action-result or confirmation popups to close.
+### Windows asks `Terminate batch job (Y/N)?`
 
-Read keys use `cargoseal:notification:<decimal chain ID>:<lowercase contract>:<lowercase wallet>:<transaction hash>:<log index>`. Reads synchronize between tabs through storage events. If localStorage is unavailable, read/dismiss state works in memory for the current page session. Each browser stores its own read state.
+This normally follows `Ctrl+C`. Enter `Y` once and wait for both API and Vite to stop.
 
-Refund availability has no on-chain event. It is detected from an Active agreement with a Pending current milestone when the latest block timestamp exceeds its due date. Its key uses the creation transaction/log plus agreement ID, milestone index, and due date. Observed refund notices are cached locally under `cargoseal:refund-notices:<scope>` to retain them after settlement. Their text directs users to check current agreement status. The separate Refunded event confirms actual payment.
+### Wrong MetaMask network
 
-### Manual test
+Switch to Sepolia `11155111`, refresh, and sign in again.
 
-Use your existing configured deployment and registered Shipper, Carrier, and Arbitrator wallets. Start the frontend with `npm run dev:ui` (existing evidence uploads still need their usual service). Use separate browser profiles for simultaneous wallet sessions, or switch accounts and sign in again.
+### Contract unavailable or new function fails
 
-1. Create an agreement as Shipper. Connect and sign in as the assigned Carrier: a new-agreement popup should appear without opening an agreement. An unrelated wallet should receive nothing.
-2. Close it. Open the bell: the update remains unread with its agreement title, message, local date/time, and View Agreement link. Wait over 30 seconds: that same popup should stay closed. Reload and sign in: the unread update can appear again.
-3. Mark the update as read, then reload and sign in again. It stays in the bell as read and does not pop up. View Agreement should navigate to the correct detail page.
-4. Generate several updates while the recipient is signed out. Sign in and exercise Previous/Next: the unread count must not change. Mark the current update read and check that the next unread appears, including when starting at the last item. View Agreement must mark only that update read before navigating. Close or Escape must leave the rest unread and suppress repeated polling popups. Sign out and in again to see those unread updates again. Finally, use Mark All as Read: the popup closes, the unread badge disappears, and every update remains in the bell as read history.
-5. Exercise the recipient matrix below, leaving the recipient dashboard open for at least 30 seconds after each confirmed transaction. Test historical delivery by signing in after transactions as well.
-6. Open an agreement confirmation dialog while another wallet produces an update. The received-event dialog should wait until the confirmation/action-result popup is dismissed. Check keyboard Tab/Shift+Tab and Escape in the notification dialog.
-7. Switch wallet, network, or configured contract: updates/read flags must not leak to the other scope. Mark an update read in another tab of the same browser and scope: the first tab should update too.
-8. Let a Pending milestone deadline pass without evidence, and allow a new block to be mined. Only the Shipper receives refund availability. Submitted evidence or a disputed/closed agreement must not produce it. Claim the refund and verify the paid-refund update and retained availability history.
+Redeploy after Solidity changes and share the updated `deployment.json`. Updating a frontend ABI cannot add functions to an older deployed address.
 
-| Action | Receives update |
-| --- | --- |
-| Create agreement | Assigned Carrier |
-| Accept/reject agreement | Shipper (rejection includes reason) |
-| Submit evidence | Shipper |
-| Request replacement evidence | Carrier |
-| Confirm milestone/release payment | Carrier |
-| Request extension | Shipper |
-| Approve/reject extension | Carrier |
-| Open dispute (including evidence arbitration) | Other participant and Arbitrator; not opener |
-| Arbitrator settles or continues dispute | Shipper and Carrier |
-| Complete agreement | Shipper and Carrier |
-| Pending evidence deadline expires | Shipper |
+### Evidence upload unavailable
 
-The first scan depends on your RPC's historical-log availability and agreement history size. Temporary RPC errors appear in the bell and retry automatically; they do not mark notifications read. Polling rescans the most recent 12 blocks to reconcile recent event changes. Tests cover recipient routing, ABI event names, identity isolation, queue deduplication, and refund conditions; interactive MetaMask behavior should be checked using the steps above.
+- Confirm `npm run dev` is running and the API is listening on port `3001`.
+- Check the Supabase URL, secret, and bucket name.
+- Use the assigned Carrier wallet and correct network.
+- Use JPEG, PNG, WebP, or PDF no larger than 10 MB.
+
+### Sepolia deployment timeout
+
+Check the RPC endpoint and connection, then retry. Before deploying repeatedly, check whether the previous transaction was already broadcast.
+
+### Account details unavailable
+
+Check MetaMask network, RPC access, and the deployed address. Do not register again until the existing profile lookup succeeds.
+
+## Security and Limitations
+
+- Never commit or share private keys, seed phrases, RPC credentials, or Supabase secrets.
+- Rotate a credential immediately after accidental exposure.
+- Blockchain data and wallet addresses are public.
+- Current evidence files are public-read and must not contain confidential information.
+- Login signatures use a browser session. Production should use server nonces and expiring HTTP-only sessions.
+- The fixed deployer Arbitrator is centralized; production should consider multisig or decentralized arbitration.
+- RPC historical-log availability may affect history loading.
+- Sepolia ETH has no real monetary value.
+
+## Team Workflow
+
+1. Pull the latest work before making changes.
+2. Keep `.env` local and share only `.env.example`.
+3. Use separate feature branches.
+4. Run `npm run check` before merging.
+5. Only the deployment owner should redeploy and update `deployment.json`.
+6. Inform the team whenever the contract address or ABI changes.
+
+## License
+
+This project is provided for academic use. Add an explicit license before external distribution.
