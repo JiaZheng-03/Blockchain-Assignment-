@@ -30,7 +30,7 @@ function Profile() {
 
   return (
     <section>
-      <div className="page-heading"><div><h1>Wallet & profile</h1><p>Your on-chain identity and the funds behind your shipments.</p></div><Link className="btn btn-secondary" to="/login"><Icon name="wallet" size={16} />Manage wallet</Link></div>
+      <div className="page-heading"><div><h1>Wallet & profile</h1><p>Your on-chain identity and the funds behind your shipments.</p></div></div>
       <div className="grid grid-2">
       <div className="panel">
         <div className="profile-header">
