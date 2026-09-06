@@ -58,7 +58,7 @@ This project is intended for university coursework and Sepolia demonstrations. I
 - Reviews both parties, evidence, dispute reasons, and responses.
 - May request more information from either participant.
 - Approves a milestone, requests replacement evidence, or divides the remaining escrow.
-- Must record a reason and act within 24 hours after the dispute opens.
+- Must record a reason and act within 48 hours after the dispute opens.
 
 ## Agreement Workflow
 
@@ -80,7 +80,7 @@ This project is intended for university coursework and Sepolia demonstrations. I
 - Milestone payouts must total exactly 100% of the deposit.
 - The Carrier has 24 hours to accept or reject a new agreement.
 - Evidence submitted on time remains reviewable after its deadline.
-- After one hour without a Shipper evidence decision, the Carrier may request arbitration.
+- After 24 hours without a Shipper evidence decision, the Carrier may request arbitration.
 - Rejected evidence receives up to 24 hours for replacement without passing the next deadline.
 - The Carrier can request one 24-hour extension during the final 24 hours before the current milestone deadline.
 - An approved extension affects only that milestone and allocates 5% of its payout to the Shipper.
@@ -88,8 +88,8 @@ This project is intended for university coursework and Sepolia demonstrations. I
 - A missed-evidence refund deducts 10 points once, with a minimum score of zero.
 - Either participant may open a dispute while the workflow permits it.
 - A dispute pauses affected deadlines; later milestone evidence may still be submitted.
-- Additional Arbitrator questions do not restart the 24-hour Arbitrator deadline.
-- After 24 hours without an Arbitrator decision, the Arbitrator is locked out. Either participant may submit a cancellation transaction that refunds all remaining escrow to the Shipper.
+- Additional Arbitrator questions do not restart the 48-hour Arbitrator deadline.
+- After 48 hours without an Arbitrator decision, the Arbitrator is locked out. Either participant may submit a cancellation transaction that refunds all remaining escrow to the Shipper.
 - A smart contract cannot wake itself up at a future time. Refunds and timeout cancellations require a MetaMask transaction.
 
 ## Prerequisites

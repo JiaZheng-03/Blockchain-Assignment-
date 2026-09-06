@@ -368,13 +368,13 @@ describe("LogisticsEscrow", function () {
       .to.emit(escrow, "UserRegistered").withArgs(deployer.address, 3, "CargoSeal Arbitration");
   });
 
-  it("lets only the Carrier request arbitration after one hour without Shipper action", async function () {
+  it("lets only the Carrier request arbitration after 24 hours without Shipper action", async function () {
     const { escrow, shipper, carrier, outsider } = await deployFixture();
     const { totalWei } = await createAgreement(escrow, shipper, carrier);
     const evidenceHash = ethers.keccak256(ethers.toUtf8Bytes("timed out review"));
     await escrow.connect(carrier).submitEvidence(0, 0, evidenceHash);
     const submittedAt = (await escrow.getMilestones(0))[0].submittedAt;
-    const availableAt = submittedAt + (60n * 60n);
+    const availableAt = submittedAt + (24n * 60n * 60n);
 
     await expect(escrow.connect(outsider).requestArbitrationAfterReviewTimeout(0, 0))
       .to.be.revertedWithCustomError(escrow, "Unauthorized");
@@ -388,7 +388,7 @@ describe("LogisticsEscrow", function () {
       .to.emit(escrow, "ArbitrationRequested")
       .withArgs(0, 0, carrier.address)
       .and.to.emit(escrow, "DisputeOpened")
-      .withArgs(0, carrier.address, "Shipper did not review submitted evidence within 1 hour.");
+      .withArgs(0, carrier.address, "Shipper did not review submitted evidence within 24 hours.");
 
     const agreement = await escrow.getAgreement(0);
     expect(agreement.status).to.equal(3);
@@ -761,12 +761,12 @@ describe("LogisticsEscrow", function () {
       .to.equal("The cargo was inspected immediately after delivery");
   });
 
-  it("cancels and refunds a dispute when the Arbitrator does not act within 24 hours", async function () {
+  it("cancels and refunds a dispute when the Arbitrator does not act within 48 hours", async function () {
     const { escrow, arbitrator, shipper, carrier, outsider } = await deployFixture();
     const { totalWei } = await createAgreement(escrow, shipper, carrier);
     await escrow.connect(carrier).requestDispute(0, "Cargo condition disputed");
     const dispute = await escrow.getDisputeRequest(0);
-    const availableAt = dispute.openedAt + 86_400n;
+    const availableAt = dispute.openedAt + (48n * 60n * 60n);
 
     await expect(escrow.connect(shipper).cancelDisputedAgreementAfterArbitratorTimeout(0))
       .to.be.revertedWithCustomError(escrow, "ArbitratorResponsePeriodActive")

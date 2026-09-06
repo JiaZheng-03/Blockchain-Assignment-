@@ -56,7 +56,7 @@ export function eventNotification(event, agreement, account, arbitrator) {
     DisputeResponseSubmitted: [(participant && lower(account) !== lower(args.respondedBy)) || lower(account) === lower(arbitrator), `Dispute response submitted: ${args.responseDetails}`],
     DisputeFollowUpRequested: [lower(account) === lower(args.requestedFrom), `The Arbitrator requested more information: ${args.question}`],
     DisputeResolved: [participant, `The Arbitrator settled the dispute and distributed the remaining escrow. Reason: ${args.resolutionReason}`],
-    DisputedAgreementCancelled: [participant, `The Arbitrator did not act within 24 hours. The agreement was cancelled and ${args.refundAmount ? 'the remaining escrow was refunded to the Shipper' : 'the escrow refund was completed'}.`],
+    DisputedAgreementCancelled: [participant, `The Arbitrator did not act within 48 hours. The agreement was cancelled and ${args.refundAmount ? 'the remaining escrow was refunded to the Shipper' : 'the escrow refund was completed'}.`],
     DisputeContinued: [participant, `The Arbitrator ${args.evidenceApproved ? 'approved the evidence' : 'requested replacement evidence'}. Reason: ${args.resolutionReason}. Agreement resumed.`],
     AgreementCompleted: [participant, 'Agreement completed.'],
     Refunded: [shipper, 'Escrow refund paid to your wallet.'],

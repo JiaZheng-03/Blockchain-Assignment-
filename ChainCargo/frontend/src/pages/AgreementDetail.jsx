@@ -522,7 +522,7 @@ function AgreementDetail() {
     && normalizedAccount !== disputeInfo.openedBy.toLowerCase()
     && disputeInfo.respondedBy === ethers.ZeroAddress;
   const arbitratorResponseDeadline = disputeInfo?.openedAt
-    ? disputeInfo.openedAt + (24 * 60 * 60)
+    ? disputeInfo.openedAt + (48 * 60 * 60)
     : 0;
   const arbitratorResponseExpired = agreement.status === 3
     && Boolean(arbitratorResponseDeadline)
@@ -580,7 +580,7 @@ function AgreementDetail() {
         }
       : {
           title: 'Evidence submitted — awaiting Shipper confirmation',
-          detail: 'The proof is immutable. If the Shipper takes no action for 1 hour, the Carrier may escalate it to the Arbitrator.',
+          detail: 'The proof is immutable. If the Shipper takes no action for 24 hours, the Carrier may escalate it to the Arbitrator.',
         };
   } else if (agreement.status === 3) {
     nextStep = arbitratorResponseExpired
@@ -593,11 +593,11 @@ function AgreementDetail() {
       : isArbitrator
       ? {
           title: 'Resolve the disputed remaining escrow',
-          detail: 'Resolve this dispute within 24 hours of its opening.',
+          detail: 'Resolve this dispute within 48 hours of its opening.',
         }
       : {
           title: 'Dispute awaiting arbitrator resolution',
-          detail: 'Milestone actions are paused while the Arbitrator has up to 24 hours to respond.',
+          detail: 'Milestone actions are paused while the Arbitrator has up to 48 hours to respond.',
         };
   }
 
@@ -896,7 +896,7 @@ function AgreementDetail() {
           <div className="action-panel">
             <h3>Arbitrator resolution</h3>
             <div className={`notice ${arbitratorResponseExpired ? 'error' : ''}`}>
-              <strong>{arbitratorResponseExpired ? 'Your response period has expired' : '24-hour response deadline'}</strong>
+              <strong>{arbitratorResponseExpired ? 'Your response period has expired' : '48-hour response deadline'}</strong>
               <p>
                 {arbitratorResponseExpired
                   ? 'Resolution actions are now locked. The Shipper or Carrier may cancel the agreement and refund the remaining escrow to the Shipper.'
@@ -1014,7 +1014,7 @@ function AgreementDetail() {
                   value={followUpQuestion}
                   onChange={(event) => setFollowUpQuestion(event.target.value)}
                 />
-                <small>The current 24-hour Arbitrator deadline does not reset.</small>
+                <small>The current 48-hour Arbitrator deadline does not reset.</small>
                 <button
                   className="btn btn-secondary"
                   disabled={Boolean(busyAction) || followUpPending || !followUpTarget || !isValidDisputeText(followUpQuestion)}
@@ -1077,7 +1077,7 @@ function AgreementDetail() {
               isShipper,
               verificationStatus: verificationForMilestone?.status,
             });
-            const reviewDeadline = milestone.submittedAt + (60 * 60);
+            const reviewDeadline = milestone.submittedAt + (24 * 60 * 60);
             const reviewSecondsRemaining = reviewDeadline - nowSeconds;
             const reviewExpired = milestone.state === 1 && reviewSecondsRemaining <= 0;
             const percentage = Number((milestone.payout * 10000n) / agreement.totalAmount) / 100;
@@ -1265,7 +1265,7 @@ function AgreementDetail() {
                   {isCurrent && isCarrier && milestone.state === 1 && reviewExpired && (
                     <div className="evidence-form">
                       <div className="notice warning">
-                        The Shipper did not approve or reject within 1 hour. Submit this case to the Arbitrator for a decision.
+                        The Shipper did not approve or reject within 24 hours. Submit this case to the Arbitrator for a decision.
                       </div>
                       <button
                         className="btn btn-primary"
@@ -1381,7 +1381,7 @@ function AgreementDetail() {
           >
             <h2 id="arbitrator-timeout-title">Cancel this disputed agreement?</h2>
             <div className="toast-message" id="arbitrator-timeout-message">
-              <strong>The Arbitrator's 24-hour response period has expired.</strong>
+              <strong>The Arbitrator's 48-hour response period has expired.</strong>
               <p>
                 This permanently closes the agreement and refunds all remaining escrow
                 ({agreement.remainingEth} ETH) to the Shipper. This action cannot be undone.

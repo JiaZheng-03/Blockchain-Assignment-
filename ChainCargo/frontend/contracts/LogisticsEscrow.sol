@@ -135,8 +135,8 @@ contract LogisticsEscrow {
     uint256 public constant REPUTATION_POINTS_PER_MILESTONE = 10;
     uint256 public constant REPUTATION_PENALTY_PER_DELAY = 10;
     uint256 public constant MIN_SCHEDULE_DELAY = 1 hours;
-    uint256 public constant EVIDENCE_REVIEW_PERIOD = 1 hours;
-    uint256 public constant ARBITRATOR_RESPONSE_PERIOD = 24 hours;
+    uint256 public constant EVIDENCE_REVIEW_PERIOD = 24 hours;
+    uint256 public constant ARBITRATOR_RESPONSE_PERIOD = 48 hours;
     uint256 public constant EXTENSION_REQUEST_WINDOW = 24 hours;
     uint256 public constant EXTENSION_DURATION = 24 hours;
     uint256 public constant EXTENSION_COMPENSATION_BPS = 500;
@@ -763,7 +763,7 @@ contract LogisticsEscrow {
         if (block.timestamp < availableAt)
             revert ReviewPeriodActive(availableAt);
         string
-            memory reason = "Shipper did not review submitted evidence within 1 hour.";
+            memory reason = "Shipper did not review submitted evidence within 24 hours.";
         _openDispute(agreementId, milestoneIndex, msg.sender, reason, true);
         emit ArbitrationRequested(agreementId, milestoneIndex, msg.sender);
     }
@@ -1077,7 +1077,7 @@ contract LogisticsEscrow {
         if (carrierAmount != 0) _sendValue(agreement.carrier, carrierAmount);
     }
 
-    /// @notice If the Arbitrator does not act within 24 hours, either participant
+    /// @notice If the Arbitrator does not act within 48 hours, either participant
     /// may cancel the disputed agreement and return all remaining escrow to the Shipper.
     function cancelDisputedAgreementAfterArbitratorTimeout(
         uint256 agreementId
