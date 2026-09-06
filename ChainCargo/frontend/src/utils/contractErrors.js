@@ -33,6 +33,9 @@ const errorMessages = {
   NoEvidenceResubmissionWindow: 'There is no time available for replacement evidence before the next milestone or Final Delivery Deadline.',
   NoActiveDispute: 'This agreement does not have an active dispute to resolve.',
   DisputeResponseAlreadySubmitted: 'The other party has already submitted a response for this dispute.',
+  ArbitratorResponsePeriodActive: 'The Arbitrator still has time to respond to this dispute.',
+  ArbitratorResponsePeriodClosed: 'The 24-hour Arbitrator response period has expired. A participant may now cancel the agreement and refund the remaining escrow to the Shipper.',
+  FollowUpResponsePending: 'Wait for the requested participant to submit the current follow-up response.',
 };
 
 function findRevertData(error) {

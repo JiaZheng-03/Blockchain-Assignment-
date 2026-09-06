@@ -74,6 +74,7 @@ export function WalletProvider({ children }) {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [walletSession, setWalletSession] = useState(readWalletSession);
+  const [walletInitialized, setWalletInitialized] = useState(false);
   const [error, setError] = useState('');
   const [showAccountPermissionHelp, setShowAccountPermissionHelp] = useState(false);
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
@@ -321,7 +322,7 @@ export function WalletProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (!walletSession) return;
+    if (!walletInitialized || !walletSession) return;
     const matchesCurrentWallet = account
       && chainId
       && walletSession.address?.toLowerCase() === account.toLowerCase()
@@ -330,7 +331,7 @@ export function WalletProvider({ children }) {
       rememberWalletSession(null);
       setWalletSession(null);
     }
-  }, [account, chainId, walletSession]);
+  }, [account, chainId, walletInitialized, walletSession]);
 
   const selectAuthorizedAccount = useCallback((selectedAccount) => {
     if (!connectionConfirmedRef.current) {
@@ -397,15 +398,34 @@ export function WalletProvider({ children }) {
 
     const initializeWallet = async () => {
       try {
-        // Previous site permissions do not count as a new CargoSeal login session.
-        // Do not expose stale account cards until Connect MetaMask succeeds.
-        setAuthorizedAccounts([]);
-        connectionConfirmedRef.current = false;
-        setAccount(null);
-        const networkId = await window.ethereum.request({ method: 'eth_chainId' });
+        const [networkId, accounts] = await Promise.all([
+          window.ethereum.request({ method: 'eth_chainId' }),
+          window.ethereum.request({ method: 'eth_accounts' }),
+        ]);
         setChainId(networkId);
+        const savedSession = readWalletSession();
+        const restoredAccount = savedSession
+          && savedSession.chainId === networkId
+          ? (accounts || []).find(
+            (candidate) => candidate.toLowerCase() === savedSession.address?.toLowerCase(),
+          )
+          : null;
+        if (restoredAccount) {
+          connectionConfirmedRef.current = true;
+          setAuthorizedAccounts(accounts || []);
+          rememberSelectedAccount(restoredAccount);
+          setAccount(restoredAccount);
+        } else {
+          connectionConfirmedRef.current = false;
+          setAuthorizedAccounts([]);
+          setAccount(null);
+          rememberWalletSession(null);
+          setWalletSession(null);
+        }
       } catch (err) {
         console.error(err);
+      } finally {
+        setWalletInitialized(true);
       }
     };
 

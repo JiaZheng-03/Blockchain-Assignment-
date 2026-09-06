@@ -1,7 +1,7 @@
 {
-  "address": "0x897f99a1B1228C2a3D05f2c38a200903dC682ee7",
+  "address": "0x2ee975EC8C4cEFEEd1de1e9954AC5b7792D0B70c",
   "chainId": 11155111,
-  "deploymentBlock": 11644159,
+  "deploymentBlock": 11644429,
   "abi": [
     {
       "inputs": [],
@@ -38,6 +38,22 @@
     {
       "inputs": [],
       "name": "AlreadyRegistered",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "availableAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "ArbitratorResponsePeriodActive",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ArbitratorResponsePeriodClosed",
       "type": "error"
     },
     {
@@ -126,6 +142,11 @@
     {
       "inputs": [],
       "name": "FixedMilestonesRequired",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "FollowUpResponsePending",
       "type": "error"
     },
     {
@@ -635,6 +656,37 @@
         },
         {
           "indexed": true,
+          "internalType": "uint32",
+          "name": "round",
+          "type": "uint32"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "requestedFrom",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "question",
+          "type": "string"
+        }
+      ],
+      "name": "DisputeFollowUpRequested",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
           "internalType": "address",
           "name": "openedBy",
           "type": "address"
@@ -669,6 +721,12 @@
           "internalType": "uint256",
           "name": "carrierAmount",
           "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "resolutionReason",
+          "type": "string"
         }
       ],
       "name": "DisputeResolved",
@@ -697,6 +755,31 @@
         }
       ],
       "name": "DisputeResponseSubmitted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "cancelledBy",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "refundAmount",
+          "type": "uint256"
+        }
+      ],
+      "name": "DisputedAgreementCancelled",
       "type": "event"
     },
     {
@@ -903,6 +986,19 @@
       ],
       "name": "UserRegistered",
       "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "ARBITRATOR_RESPONSE_PERIOD",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
       "inputs": [],
@@ -1241,6 +1337,19 @@
           "type": "uint256"
         }
       ],
+      "name": "cancelDisputedAgreementAfterArbitratorTimeout",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        }
+      ],
       "name": "cancelUnacceptedAgreement",
       "outputs": [],
       "stateMutability": "nonpayable",
@@ -1495,6 +1604,21 @@
             {
               "internalType": "string",
               "name": "resolutionReason",
+              "type": "string"
+            },
+            {
+              "internalType": "uint32",
+              "name": "followUpRound",
+              "type": "uint32"
+            },
+            {
+              "internalType": "address",
+              "name": "followUpRequestedFrom",
+              "type": "address"
+            },
+            {
+              "internalType": "string",
+              "name": "followUpQuestion",
               "type": "string"
             },
             {
@@ -1849,6 +1973,29 @@
           "type": "uint256"
         },
         {
+          "internalType": "address",
+          "name": "requestedFrom",
+          "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "question",
+          "type": "string"
+        }
+      ],
+      "name": "requestAdditionalDisputeResponse",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
           "internalType": "uint256",
           "name": "milestoneIndex",
           "type": "uint256"
@@ -1911,6 +2058,11 @@
           "internalType": "uint256",
           "name": "shipperAmount",
           "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "resolutionReason",
+          "type": "string"
         }
       ],
       "name": "resolveDispute",

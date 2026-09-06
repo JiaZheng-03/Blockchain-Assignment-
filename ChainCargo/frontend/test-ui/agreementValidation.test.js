@@ -36,6 +36,7 @@ import {
   isArbitrationAgreement,
 } from '../src/utils/arbitration.js';
 import {
+  canSubmitEvidenceForWorkflow,
   createSupabaseProofUri,
   canOpenEvidenceLink,
   createUploadAuthorizationMessage,
@@ -274,7 +275,32 @@ test('builds the arbitrator case range and includes disputed and resolved record
   assert.deepEqual(buildAgreementIds(3n), [0n, 1n, 2n]);
   assert.equal(isArbitrationAgreement({ status: 3n }), true);
   assert.equal(isArbitrationAgreement({ status: 4n }), true);
+  assert.equal(isArbitrationAgreement({ status: 0n, hasArbitrationHistory: true }), true);
+  assert.equal(isArbitrationAgreement({ status: 1n, hasArbitrationHistory: true }), true);
   assert.equal(isArbitrationAgreement({ status: 0n }), false);
+});
+
+test('allows later milestone evidence while an earlier milestone is disputed', () => {
+  assert.equal(canSubmitEvidenceForWorkflow({ agreementStatus: 0n, milestoneIndex: 0 }), true);
+  assert.equal(canSubmitEvidenceForWorkflow({
+    agreementStatus: 3n,
+    disputeActive: true,
+    disputedMilestoneIndex: 0,
+    milestoneIndex: 0,
+  }), false);
+  assert.equal(canSubmitEvidenceForWorkflow({
+    agreementStatus: 3n,
+    disputeActive: true,
+    disputedMilestoneIndex: 0,
+    milestoneIndex: 1,
+  }), true);
+  assert.equal(canSubmitEvidenceForWorkflow({
+    agreementStatus: 3n,
+    disputeActive: false,
+    disputedMilestoneIndex: 0,
+    milestoneIndex: 1,
+  }), false);
+  assert.equal(canSubmitEvidenceForWorkflow({ agreementStatus: 4n, milestoneIndex: 1 }), false);
 });
 
 test('cryptographically verifies uploaded file bytes before milestone confirmation', () => {

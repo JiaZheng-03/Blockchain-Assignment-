@@ -28,7 +28,9 @@ const eventDetails = {
   Refunded: (args) => `${ethers.formatEther(args.amount)} ETH returned to the shipper`,
   DisputeOpened: (args) => `Dispute opened: ${args.reason}`,
   DisputeResponseSubmitted: (args) => `Other party response submitted: ${args.responseDetails}`,
-  DisputeResolved: (args) => `Resolved: ${ethers.formatEther(args.shipperAmount)} ETH to shipper and ${ethers.formatEther(args.carrierAmount)} ETH to carrier`,
+  DisputeResolved: (args) => `Resolved: ${ethers.formatEther(args.shipperAmount)} ETH to shipper and ${ethers.formatEther(args.carrierAmount)} ETH to carrier. Arbitrator reason: ${args.resolutionReason}`,
+  DisputeFollowUpRequested: (args) => `Arbitrator requested follow-up from ${args.requestedFrom}: ${args.question}`,
+  DisputedAgreementCancelled: (args) => `Arbitrator response period expired; ${ethers.formatEther(args.refundAmount)} ETH returned to the Shipper`,
   DisputeContinued: (args) => `Arbitrator ${args.evidenceApproved ? 'approved the evidence' : 'requested replacement evidence'} for milestone ${Number(args.milestoneIndex) + 1}; reason: ${args.resolutionReason}; deadlines restored by ${Number(args.pausedSeconds)} seconds`,
 };
 
@@ -68,12 +70,25 @@ function History() {
         const candidateIds = isArbitrator
           ? buildAgreementIds(await contract.agreementCount())
           : await contract.getUserAgreementIds(account);
-        const candidateAgreements = await Promise.all(
-          candidateIds.map((id) => contract.getAgreement(id)),
+        const candidateRecords = await Promise.all(
+          candidateIds.map(async (id) => {
+            const [agreement, dispute] = await Promise.all([
+              contract.getAgreement(id),
+              isArbitrator ? contract.getDisputeRequest(id).catch(() => null) : null,
+            ]);
+            return {
+              agreement,
+              id,
+              hasArbitrationHistory: Boolean(dispute && Number(dispute.openedAt) > 0),
+            };
+          }),
         );
-        const visibleRecords = candidateIds
-          .map((id, index) => ({ id, agreement: candidateAgreements[index] }))
-          .filter(({ agreement }) => !isArbitrator || isArbitrationAgreement(agreement));
+        const visibleRecords = candidateRecords.filter((record) => (
+          !isArbitrator || isArbitrationAgreement({
+            status: record.agreement.status,
+            hasArbitrationHistory: record.hasArbitrationHistory,
+          })
+        ));
         const ids = visibleRecords.map(({ id }) => id);
         if (!ids.length) {
           if (!cancelled) {
@@ -85,7 +100,10 @@ function History() {
 
         const rawAgreements = visibleRecords.map(({ agreement }) => agreement);
         const agreementSummaries = ids.map(
-          (id, index) => normalizeAgreement(id, rawAgreements[index]),
+          (id, index) => ({
+            ...normalizeAgreement(id, rawAgreements[index]),
+            hasArbitrationHistory: visibleRecords[index].hasArbitrationHistory,
+          }),
         );
 
         let normalized;
@@ -209,10 +227,11 @@ function History() {
       return `"${safe.replaceAll('"', '""')}"`;
     };
     const rows = [
-      ['Agreement ID', 'Agreement', 'Total ETH', 'Remaining ETH', 'Status', 'Last activity (UTC)', 'Event count'],
+      ['Agreement ID', 'Agreement', 'Total ETH', 'Remaining ETH', 'Status', 'Latest activity', 'Latest activity details', 'Last activity (UTC)', 'Event count'],
       ...filteredHistory.map((agreement) => [
         agreement.id, agreement.title, agreement.totalEth, agreement.remainingEth,
-        agreement.statusLabel, new Date(agreement.latestTimestamp * 1000).toISOString(), agreement.eventCount,
+        agreement.statusLabel, agreement.latestEvent?.name || 'AgreementCreated',
+        agreement.latestEvent?.detail || '', new Date(agreement.latestTimestamp * 1000).toISOString(), agreement.eventCount,
       ]),
     ];
     const csv = rows.map((row) => row.map(escapeCell).join(',')).join('\r\n');
@@ -253,7 +272,10 @@ function History() {
                 {filteredHistory.map((agreement) => (
                   <tr key={agreement.id}>
                     <td><Link className="table-agreement" to={`/agreement/${agreement.id}`}><span className="asset-icon"><Icon name="box" size={17} /></span><span><strong>{agreement.title}</strong><small>Agreement #{agreement.id}</small></span></Link></td>
-                    <td className="table-activity">{agreement.latestEvent ? agreement.latestEvent.name.replace(/([A-Z])/g, ' $1').trim() : 'Agreement created'}<small>{agreement.eventCount} event{agreement.eventCount === 1 ? '' : 's'}</small></td>
+                    <td className="table-activity">
+                      {agreement.latestEvent ? agreement.latestEvent.name.replace(/([A-Z])/g, ' $1').trim() : 'Agreement created'}
+                      <small>{agreement.latestEvent?.detail || `${agreement.eventCount} event${agreement.eventCount === 1 ? '' : 's'}`}</small>
+                    </td>
                     <td className="table-amount">{agreement.totalEth} ETH</td>
                     <td className="table-date">{agreement.remainingEth} ETH</td>
                     <td><span className={`badge status-${agreement.statusLabel.toLowerCase().replaceAll(' ', '-')}`}>{agreement.statusLabel}</span></td>

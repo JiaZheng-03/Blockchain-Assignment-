@@ -16,6 +16,7 @@ function WalletAccess() {
   const { getReadContract, isCorrectNetwork } = useContract();
   const [details, setDetails] = useState({});
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState('');
   const hasMetaMask = typeof window !== 'undefined' && Boolean(window.ethereum);
 
   const backToHome = async () => {
@@ -27,11 +28,14 @@ function WalletAccess() {
     let cancelled = false;
     if (!authorizedAccounts.length || !window.ethereum) {
       setDetails({});
+      setDetailsError('');
+      setDetailsLoading(false);
       return undefined;
     }
 
     async function loadAccountDetails() {
       setDetailsLoading(true);
+      setDetailsError('');
       try {
         const provider = new ethers.BrowserProvider(window.ethereum);
         let contract = null;
@@ -39,18 +43,33 @@ function WalletAccess() {
           try { contract = await getReadContract(); } catch { contract = null; }
         }
         const entries = await Promise.all(authorizedAccounts.map(async (address) => {
-          const [balance, profile] = await Promise.all([
-            provider.getBalance(address).catch(() => 0n),
-            contract?.getProfile(address).catch(() => null) || null,
+          const [balanceResult, profileResult] = await Promise.allSettled([
+            provider.getBalance(address),
+            contract ? contract.getProfile(address) : Promise.reject(new Error('Contract unavailable')),
           ]);
-          const role = profile ? Number(profile.role) : 0;
+          const lookupFailed = balanceResult.status === 'rejected' || profileResult.status === 'rejected';
+          const balance = balanceResult.status === 'fulfilled' ? balanceResult.value : null;
+          const profile = profileResult.status === 'fulfilled' ? profileResult.value : null;
+          const role = profile ? Number(profile.role) : null;
           return [address.toLowerCase(), {
-            balance: `${Number(ethers.formatEther(balance)).toFixed(6)} ETH`,
-            name: profile?.name || 'Unregistered wallet',
-            role: ROLE_LABELS[role] || 'Unregistered',
+            balance: balance === null ? 'Unavailable' : `${Number(ethers.formatEther(balance)).toFixed(6)} ETH`,
+            lookupFailed,
+            name: lookupFailed ? 'Account details unavailable' : profile?.name || 'Unregistered wallet',
+            role: lookupFailed ? 'Unavailable' : ROLE_LABELS[role] || 'Unregistered',
           }];
         }));
-        if (!cancelled) setDetails(Object.fromEntries(entries));
+        if (!cancelled) {
+          const nextDetails = Object.fromEntries(entries);
+          setDetails(nextDetails);
+          if (Object.values(nextDetails).some((detail) => detail.lookupFailed)) {
+            setDetailsError('Some wallet details could not be read. Check the network and RPC connection before continuing.');
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setDetails({});
+          setDetailsError('Wallet details could not be loaded. Check the network and RPC connection.');
+        }
       } finally {
         if (!cancelled) setDetailsLoading(false);
       }
@@ -64,7 +83,7 @@ function WalletAccess() {
     if (chooseMode && !selectionConfirmed) return;
     if (!isAuthenticated || !account) return;
     const selectedDetails = details[account.toLowerCase()];
-    if (!selectedDetails) return;
+    if (!selectedDetails || selectedDetails.lookupFailed) return;
     navigate(selectedDetails.role === 'Unregistered' ? '/register' : '/dashboard', {
       replace: true,
     });
@@ -100,6 +119,7 @@ function WalletAccess() {
               : 'Select one or more MetaMask accounts to use with CargoSeal.'}
         </p>
         {error && <div className="notice error">{error}</div>}
+        {detailsError && <div className="notice error">{detailsError}</div>}
 
         {isConnecting ? (
           <div className="notice">Waiting for MetaMask connection confirmation…</div>

@@ -9,7 +9,9 @@ const cases = {
   MilestoneProofSubmitted: ['0xshipper'], EvidenceRevisionRequested: ['0xcarrier'], MilestoneConfirmed: ['0xcarrier'],
   DeadlineExtensionRequested: ['0xshipper'], DeadlineExtensionApproved: ['0xcarrier'], DeadlineExtensionRejected: ['0xcarrier'],
   DisputeOpened: ['0xcarrier', '0xarbitrator'], DisputeResolved: ['0xshipper', '0xcarrier'],
+  DisputedAgreementCancelled: ['0xshipper', '0xcarrier'],
   DisputeResponseSubmitted: ['0xshipper', '0xarbitrator'],
+  DisputeFollowUpRequested: ['0xcarrier'],
   DisputeContinued: ['0xshipper', '0xcarrier'], AgreementCompleted: ['0xshipper', '0xcarrier'], Refunded: ['0xshipper'],
 };
 const abi = new Interface(ESCROW_ABI);
@@ -25,6 +27,8 @@ for (const [name, recipients] of Object.entries(cases)) {
           reason: 'Damaged cargo',
           respondedBy: '0xcarrier',
           responseDetails: 'Cargo was delivered intact',
+          requestedFrom: '0xcarrier',
+          question: 'Provide the signed delivery receipt',
           resolutionReason: 'The evidence proves delivery',
         },
       }, agreement, account.toUpperCase(), '0xarbitrator');

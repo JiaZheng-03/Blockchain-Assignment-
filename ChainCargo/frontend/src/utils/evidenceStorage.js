@@ -158,6 +158,18 @@ export function canOpenEvidenceLink({ isShipper, verificationStatus }) {
   return !isShipper || verificationStatus === 'verified';
 }
 
+export function canSubmitEvidenceForWorkflow({
+  agreementStatus,
+  disputeActive = false,
+  disputedMilestoneIndex = -1,
+  milestoneIndex,
+}) {
+  if (Number(agreementStatus) === 0) return true;
+  return Number(agreementStatus) === 3
+    && Boolean(disputeActive)
+    && Number(milestoneIndex) > Number(disputedMilestoneIndex);
+}
+
 async function readError(response, fallback) {
   try {
     const payload = await response.json();

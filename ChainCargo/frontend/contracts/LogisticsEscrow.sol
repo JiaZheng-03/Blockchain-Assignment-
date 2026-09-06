@@ -74,6 +74,9 @@ contract LogisticsEscrow {
         address respondedBy;
         string responseDetails;
         string resolutionReason;
+        uint32 followUpRound;
+        address followUpRequestedFrom;
+        string followUpQuestion;
         bool active;
         bool reviewTimeout;
     }
@@ -121,14 +124,18 @@ contract LogisticsEscrow {
     error NoEvidenceResubmissionWindow();
     error NoActiveDispute();
     error DisputeResponseAlreadySubmitted();
+    error ArbitratorResponsePeriodActive(uint64 availableAt);
+    error ArbitratorResponsePeriodClosed();
+    error FollowUpResponsePending();
 
     address public immutable arbitrator;
-    uint256 public constant CONTRACT_VERSION = 14;
+    uint256 public constant CONTRACT_VERSION = 16;
     string public constant EVIDENCE_URI_SCHEME = "supabase://";
     uint256 public constant MAX_MILESTONES = 2;
     uint256 public constant REPUTATION_POINTS_PER_MILESTONE = 10;
     uint256 public constant MIN_SCHEDULE_DELAY = 1 hours;
     uint256 public constant EVIDENCE_REVIEW_PERIOD = 1 hours;
+    uint256 public constant ARBITRATOR_RESPONSE_PERIOD = 24 hours;
     uint256 public constant EXTENSION_REQUEST_WINDOW = 24 hours;
     uint256 public constant EXTENSION_DURATION = 24 hours;
     uint256 public constant EXTENSION_COMPENSATION_BPS = 500;
@@ -224,6 +231,12 @@ contract LogisticsEscrow {
         address indexed respondedBy,
         string responseDetails
     );
+    event DisputeFollowUpRequested(
+        uint256 indexed agreementId,
+        uint32 indexed round,
+        address indexed requestedFrom,
+        string question
+    );
     event ArbitrationRequested(
         uint256 indexed agreementId,
         uint256 indexed milestoneIndex,
@@ -252,7 +265,13 @@ contract LogisticsEscrow {
     event DisputeResolved(
         uint256 indexed agreementId,
         uint256 shipperAmount,
-        uint256 carrierAmount
+        uint256 carrierAmount,
+        string resolutionReason
+    );
+    event DisputedAgreementCancelled(
+        uint256 indexed agreementId,
+        address indexed cancelledBy,
+        uint256 refundAmount
     );
     event DisputeContinued(
         uint256 indexed agreementId,
@@ -896,17 +915,64 @@ contract LogisticsEscrow {
         if (msg.sender != agreement.shipper && msg.sender != agreement.carrier) {
             revert Unauthorized();
         }
-        if (msg.sender == dispute.openedBy) revert Unauthorized();
-        if (dispute.respondedBy != address(0)) {
-            revert DisputeResponseAlreadySubmitted();
-        }
         if (bytes(responseDetails).length == 0) revert InvalidInput();
         _requireMaximumLength(responseDetails, MAX_DISPUTE_REASON_LENGTH);
+
+        if (dispute.followUpRequestedFrom != address(0)) {
+            if (msg.sender != dispute.followUpRequestedFrom) revert Unauthorized();
+            dispute.followUpRequestedFrom = address(0);
+        } else {
+            if (msg.sender == dispute.openedBy) revert Unauthorized();
+            if (dispute.respondedBy != address(0)) {
+                revert DisputeResponseAlreadySubmitted();
+            }
+        }
 
         dispute.respondedAt = uint64(block.timestamp);
         dispute.respondedBy = msg.sender;
         dispute.responseDetails = responseDetails;
         emit DisputeResponseSubmitted(agreementId, msg.sender, responseDetails);
+    }
+
+    /// @notice The Arbitrator may request another statement from either participant.
+    /// A new round can be opened after the previous requested participant responds.
+    function requestAdditionalDisputeResponse(
+        uint256 agreementId,
+        address requestedFrom,
+        string calldata question
+    ) external agreementExists(agreementId) {
+        if (msg.sender != arbitrator || profiles[msg.sender].role != Role.Arbitrator) {
+            revert Unauthorized();
+        }
+        Agreement storage agreement = agreements[agreementId];
+        DisputeRequest storage dispute = disputeRequests[agreementId];
+        if (agreement.status != AgreementStatus.Disputed || !dispute.active) {
+            revert NoActiveDispute();
+        }
+        _requireArbitratorResponseWindow(dispute);
+        if (requestedFrom != agreement.shipper && requestedFrom != agreement.carrier) {
+            revert Unauthorized();
+        }
+        if (
+            dispute.followUpRequestedFrom != address(0)
+        ) {
+            revert FollowUpResponsePending();
+        }
+        if (bytes(question).length == 0) revert InvalidInput();
+        _requireMaximumLength(question, MAX_DISPUTE_REASON_LENGTH);
+
+        dispute.followUpRound += 1;
+        dispute.followUpRequestedFrom = requestedFrom;
+        dispute.followUpQuestion = question;
+        dispute.respondedAt = 0;
+        dispute.respondedBy = address(0);
+        dispute.responseDetails = "";
+        emit DisputeFollowUpRequested(
+            agreementId,
+            dispute.followUpRound,
+            requestedFrom,
+            question
+        );
     }
 
     function resolveDisputeAndContinue(
@@ -922,6 +988,7 @@ contract LogisticsEscrow {
         if (agreement.status != AgreementStatus.Disputed || !dispute.active) {
             revert NoActiveDispute();
         }
+        _requireArbitratorResponseWindow(dispute);
         if (bytes(resolutionReason).length == 0) revert InvalidInput();
         _requireMaximumLength(resolutionReason, MAX_DISPUTE_REASON_LENGTH);
         uint256 milestoneIndex = dispute.milestoneIndex;
@@ -948,7 +1015,8 @@ contract LogisticsEscrow {
 
     function resolveDispute(
         uint256 agreementId,
-        uint256 shipperAmount
+        uint256 shipperAmount,
+        string calldata resolutionReason
     ) external agreementExists(agreementId) nonReentrant {
         if (
             msg.sender != arbitrator ||
@@ -959,16 +1027,65 @@ contract LogisticsEscrow {
         Agreement storage agreement = agreements[agreementId];
         if (agreement.status != AgreementStatus.Disputed)
             revert InvalidStatus();
+        DisputeRequest storage dispute = disputeRequests[agreementId];
+        if (!dispute.active) revert NoActiveDispute();
+        _requireArbitratorResponseWindow(dispute);
         if (shipperAmount > agreement.remainingAmount) revert InvalidInput();
-        disputeRequests[agreementId].active = false;
+        if (bytes(resolutionReason).length == 0) revert InvalidInput();
+        _requireMaximumLength(resolutionReason, MAX_DISPUTE_REASON_LENGTH);
+        dispute.resolutionReason = resolutionReason;
+        dispute.active = false;
 
         uint256 carrierAmount = agreement.remainingAmount - shipperAmount;
         agreement.remainingAmount = 0;
         agreement.status = AgreementStatus.Resolved;
-        emit DisputeResolved(agreementId, shipperAmount, carrierAmount);
+        emit DisputeResolved(
+            agreementId,
+            shipperAmount,
+            carrierAmount,
+            resolutionReason
+        );
 
         if (shipperAmount != 0) _sendValue(agreement.shipper, shipperAmount);
         if (carrierAmount != 0) _sendValue(agreement.carrier, carrierAmount);
+    }
+
+    /// @notice If the Arbitrator does not act within 24 hours, either participant
+    /// may cancel the disputed agreement and return all remaining escrow to the Shipper.
+    function cancelDisputedAgreementAfterArbitratorTimeout(
+        uint256 agreementId
+    ) external agreementExists(agreementId) nonReentrant {
+        Agreement storage agreement = agreements[agreementId];
+        DisputeRequest storage dispute = disputeRequests[agreementId];
+        if (msg.sender != agreement.shipper && msg.sender != agreement.carrier) {
+            revert Unauthorized();
+        }
+        if (agreement.status != AgreementStatus.Disputed || !dispute.active) {
+            revert NoActiveDispute();
+        }
+        uint64 availableAt = dispute.openedAt + uint64(ARBITRATOR_RESPONSE_PERIOD);
+        if (block.timestamp < availableAt) {
+            revert ArbitratorResponsePeriodActive(availableAt);
+        }
+
+        uint256 refund = agreement.remainingAmount;
+        dispute.active = false;
+        dispute.resolutionReason = "Arbitrator response period expired; remaining escrow refunded to the Shipper.";
+        agreement.remainingAmount = 0;
+        agreement.status = AgreementStatus.Refunded;
+        emit DisputedAgreementCancelled(agreementId, msg.sender, refund);
+        _sendValue(agreement.shipper, refund);
+    }
+
+    function _requireArbitratorResponseWindow(
+        DisputeRequest storage dispute
+    ) private view {
+        if (
+            block.timestamp >=
+            dispute.openedAt + uint64(ARBITRATOR_RESPONSE_PERIOD)
+        ) {
+            revert ArbitratorResponsePeriodClosed();
+        }
     }
 
     function _openDispute(
@@ -988,6 +1105,9 @@ contract LogisticsEscrow {
             respondedBy: address(0),
             responseDetails: "",
             resolutionReason: "",
+            followUpRound: 0,
+            followUpRequestedFrom: address(0),
+            followUpQuestion: "",
             active: true,
             reviewTimeout: reviewTimeout
         });

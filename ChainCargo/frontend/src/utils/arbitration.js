@@ -11,5 +11,7 @@ export function buildAgreementIds(agreementCount) {
 
 export function isArbitrationAgreement(agreement) {
   const status = Number(agreement.status);
-  return status === DISPUTED_STATUS || status === RESOLVED_STATUS;
+  return status === DISPUTED_STATUS
+    || status === RESOLVED_STATUS
+    || Boolean(agreement.hasArbitrationHistory);
 }

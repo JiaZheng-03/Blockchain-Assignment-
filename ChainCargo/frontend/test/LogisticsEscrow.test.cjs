@@ -633,13 +633,97 @@ describe("LogisticsEscrow", function () {
       .to.emit(escrow, "DisputeOpened")
       .withArgs(0, carrier.address, "Cargo condition disputed");
 
-    await expect(escrow.connect(outsider).resolveDispute(0, 1))
+    await expect(escrow.connect(outsider).resolveDispute(0, 1, "Invalid decision"))
       .to.be.revertedWithCustomError(escrow, "Unauthorized");
-    await expect(escrow.connect(arbitrator).resolveDispute(0, ethers.parseEther("4")))
+    await expect(escrow.connect(arbitrator).resolveDispute(0, ethers.parseEther("4"), ""))
+      .to.be.revertedWithCustomError(escrow, "InvalidInput");
+    await expect(escrow.connect(arbitrator).resolveDispute(
+      0,
+      ethers.parseEther("4"),
+      "Both parties share responsibility for the damaged cargo",
+    ))
       .to.changeEtherBalances(
         [escrow, shipper, carrier],
         [-ethers.parseEther("10"), ethers.parseEther("4"), ethers.parseEther("6")],
       );
+    expect((await escrow.getDisputeRequest(0)).resolutionReason)
+      .to.equal("Both parties share responsibility for the damaged cargo");
+  });
+
+  it("lets the Arbitrator request multiple follow-up responses from either participant", async function () {
+    const { escrow, arbitrator, shipper, carrier, outsider } = await deployFixture();
+    await createAgreement(escrow, shipper, carrier);
+    await escrow.connect(shipper).requestDispute(0, "Delivery condition disputed");
+
+    await expect(escrow.connect(outsider).requestAdditionalDisputeResponse(
+      0,
+      carrier.address,
+      "Provide the signed receipt",
+    )).to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(arbitrator).requestAdditionalDisputeResponse(
+      0,
+      carrier.address,
+      "Provide the signed receipt",
+    )).to.emit(escrow, "DisputeFollowUpRequested")
+      .withArgs(0, 1, carrier.address, "Provide the signed receipt");
+    await expect(escrow.connect(arbitrator).requestAdditionalDisputeResponse(
+      0,
+      shipper.address,
+      "Provide inspection photos",
+    )).to.be.revertedWithCustomError(escrow, "FollowUpResponsePending");
+    await expect(escrow.connect(shipper).respondToDispute(0, "Wrong participant"))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+    await expect(escrow.connect(carrier).respondToDispute(
+      0,
+      "The signed receipt is attached to the evidence record",
+    )).to.emit(escrow, "DisputeResponseSubmitted")
+      .withArgs(0, carrier.address, "The signed receipt is attached to the evidence record");
+
+    await escrow.connect(arbitrator).requestAdditionalDisputeResponse(
+      0,
+      shipper.address,
+      "Confirm when the cargo was inspected",
+    );
+    await escrow.connect(shipper).respondToDispute(
+      0,
+      "The cargo was inspected immediately after delivery",
+    );
+    const dispute = await escrow.getDisputeRequest(0);
+    expect(dispute.followUpRound).to.equal(2);
+    expect(dispute.followUpRequestedFrom).to.equal(ethers.ZeroAddress);
+    expect(dispute.responseDetails)
+      .to.equal("The cargo was inspected immediately after delivery");
+  });
+
+  it("cancels and refunds a dispute when the Arbitrator does not act within 24 hours", async function () {
+    const { escrow, arbitrator, shipper, carrier, outsider } = await deployFixture();
+    const { totalWei } = await createAgreement(escrow, shipper, carrier);
+    await escrow.connect(carrier).requestDispute(0, "Cargo condition disputed");
+    const dispute = await escrow.getDisputeRequest(0);
+    const availableAt = dispute.openedAt + 86_400n;
+
+    await expect(escrow.connect(shipper).cancelDisputedAgreementAfterArbitratorTimeout(0))
+      .to.be.revertedWithCustomError(escrow, "ArbitratorResponsePeriodActive")
+      .withArgs(availableAt);
+    await expect(escrow.connect(outsider).cancelDisputedAgreementAfterArbitratorTimeout(0))
+      .to.be.revertedWithCustomError(escrow, "Unauthorized");
+
+    await time.increaseTo(availableAt);
+    await expect(escrow.connect(arbitrator).resolveDispute(0, totalWei, "Late decision"))
+      .to.be.revertedWithCustomError(escrow, "ArbitratorResponsePeriodClosed");
+    await expect(escrow.connect(carrier).cancelDisputedAgreementAfterArbitratorTimeout(0))
+      .to.emit(escrow, "DisputedAgreementCancelled")
+      .withArgs(0, carrier.address, totalWei);
+
+    const agreement = await escrow.getAgreement(0);
+    const resolvedDispute = await escrow.getDisputeRequest(0);
+    expect(agreement.status).to.equal(2);
+    expect(agreement.remainingAmount).to.equal(0);
+    expect(await ethers.provider.getBalance(await escrow.getAddress())).to.equal(0);
+    expect(resolvedDispute.active).to.equal(false);
+    expect(resolvedDispute.resolutionReason).to.equal(
+      "Arbitrator response period expired; remaining escrow refunded to the Shipper.",
+    );
   });
 
   it("pauses deadlines, allows later evidence, and continues after Arbitrator approval", async function () {
@@ -651,7 +735,7 @@ describe("LogisticsEscrow", function () {
     await escrow.connect(shipper).requestDispute(0, "Pickup evidence needs review");
     const dispute = await escrow.getDisputeRequest(0);
 
-    await time.increaseTo(dueDates[1] + 60);
+    await time.increase(3_600);
     await expect(escrow.connect(carrier).submitEvidence(0, 1, deliveryHash))
       .to.emit(escrow, "MilestoneProofSubmitted");
 

@@ -18,7 +18,8 @@ module.exports = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200,
+        // Favor deployable bytecode size; this contract is feature-rich and deployed infrequently.
+        runs: 1,
       },
       viaIR: true,
     },
