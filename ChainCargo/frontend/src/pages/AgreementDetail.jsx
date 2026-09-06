@@ -29,6 +29,25 @@ const formatDate = (timestamp) => new Date(timestamp * 1000).toLocaleString();
 const isValidDisputeText = (value) => value.trim().length > 0
   && new TextEncoder().encode(value.trim()).length <= 1000;
 
+function ParticipantIdentity({ address, copied, label, name, onCopy }) {
+  return (
+    <div className="participant-identity">
+      <span className="participant-avatar" aria-hidden="true">{name?.charAt(0)?.toUpperCase() || label.charAt(0)}</span>
+      <span className="participant-summary">
+        <small>{label}</small>
+        <strong>{name || label}</strong>
+      </span>
+      <span className="public-key-row">
+        <small>Public key</small>
+        <code title={address}>{address}</code>
+        <button className="public-key-copy" onClick={() => onCopy(address)} type="button">
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </span>
+    </div>
+  );
+}
+
 function AgreementDetail() {
   const { id } = useParams();
   const { account } = useWallet();
@@ -53,6 +72,8 @@ function AgreementDetail() {
   const [extensionReason, setExtensionReason] = useState('');
   const [extensionRequest, setExtensionRequest] = useState(null);
   const [arbitrator, setArbitrator] = useState('');
+  const [participantProfiles, setParticipantProfiles] = useState({});
+  const [copiedAddress, setCopiedAddress] = useState('');
   const [disputeInfo, setDisputeInfo] = useState(null);
   const [disputeLookupError, setDisputeLookupError] = useState('');
   const [busyAction, setBusyAction] = useState('');
@@ -134,6 +155,20 @@ function AgreementDetail() {
       }
       setCanRefund(refundable);
       setArbitrator(arbitratorAddress);
+      const identityAddresses = [...new Set([
+        rawAgreement.shipper,
+        rawAgreement.carrier,
+        arbitratorAddress,
+      ].map((identityAddress) => identityAddress.toLowerCase()))];
+      const identityEntries = await Promise.all(identityAddresses.map(async (identityAddress) => {
+        try {
+          const profile = await contract.getProfile(identityAddress);
+          return [identityAddress, { name: profile.name || '' }];
+        } catch {
+          return [identityAddress, { name: '' }];
+        }
+      }));
+      setParticipantProfiles(Object.fromEntries(identityEntries));
       setDisputeInfo(null);
       setDisputeLookupError('');
       if ([3, 4].includes(Number(rawAgreement.status))) {
@@ -349,6 +384,16 @@ function AgreementDetail() {
     );
   };
 
+  const copyPublicKey = async (publicKey) => {
+    try {
+      await navigator.clipboard.writeText(publicKey);
+      setCopiedAddress(publicKey.toLowerCase());
+      window.setTimeout(() => setCopiedAddress(''), 1_500);
+    } catch {
+      setError('The public key could not be copied. Select the address and copy it manually.');
+    }
+  };
+
   const selectEvidenceFile = (milestoneIndex, file) => {
     try {
       if (file) validateEvidenceFileMetadata(file);
@@ -440,6 +485,18 @@ function AgreementDetail() {
   const isShipper = normalizedAccount === agreement.shipper.toLowerCase();
   const isCarrier = normalizedAccount === agreement.carrier.toLowerCase();
   const isArbitrator = normalizedAccount === arbitrator.toLowerCase();
+  const profileName = (identityAddress, fallback) => (
+    participantProfiles[identityAddress?.toLowerCase()]?.name || fallback
+  );
+  const shipperName = profileName(agreement.shipper, 'Shipper');
+  const carrierName = profileName(agreement.carrier, 'Carrier');
+  const arbitratorName = profileName(arbitrator, 'Arbitrator');
+  const openedByName = disputeInfo?.openedBy
+    ? profileName(
+        disputeInfo.openedBy,
+        disputeInfo.openedBy.toLowerCase() === agreement.shipper.toLowerCase() ? 'Shipper' : 'Carrier',
+      )
+    : 'Unavailable';
   const currentMilestone = milestones[agreement.nextMilestone];
   const nextMilestone = milestones[agreement.nextMilestone + 1];
   const currentMilestonePending = agreement.status === 0 && currentMilestone?.state === 0;
@@ -562,9 +619,30 @@ function AgreementDetail() {
           </span>
         </div>
         <p>{agreement.notes || 'No additional shipment notes.'}</p>
+        <div className="agreement-parties" aria-label="Agreement participants">
+          <ParticipantIdentity
+            address={agreement.shipper}
+            copied={copiedAddress === agreement.shipper.toLowerCase()}
+            label="Shipper"
+            name={shipperName}
+            onCopy={copyPublicKey}
+          />
+          <ParticipantIdentity
+            address={agreement.carrier}
+            copied={copiedAddress === agreement.carrier.toLowerCase()}
+            label="Carrier"
+            name={carrierName}
+            onCopy={copyPublicKey}
+          />
+          <ParticipantIdentity
+            address={arbitrator}
+            copied={copiedAddress === arbitrator.toLowerCase()}
+            label="Arbitrator"
+            name={arbitratorName}
+            onCopy={copyPublicKey}
+          />
+        </div>
         <div className="detail-grid">
-          <div><small>Shipper</small><strong title={agreement.shipper}>{shortAddress(agreement.shipper)}</strong></div>
-          <div><small>Carrier</small><strong title={agreement.carrier}>{shortAddress(agreement.carrier)}</strong></div>
           <div>
             <small>Carrier reputation</small>
             <strong>
@@ -604,7 +682,7 @@ function AgreementDetail() {
             </div>
             <div>
               <small>Requested by</small>
-              <strong title={disputeInfo.openedBy}>{shortAddress(disputeInfo.openedBy)}</strong>
+              <strong title={disputeInfo.openedBy}>{openedByName} · {shortAddress(disputeInfo.openedBy)}</strong>
             </div>
             <div>
               <small>Milestone</small>
@@ -651,7 +729,10 @@ function AgreementDetail() {
               <div className="notice">
                 <strong>Arbitrator follow-up #{disputeInfo.followUpRound}</strong>
                 <p>{disputeInfo.followUpQuestion}</p>
-                <small>Requested from {shortAddress(followUpPending ? disputeInfo.followUpRequestedFrom : disputeInfo.respondedBy)}</small>
+                <small>Requested from {profileName(
+                  followUpPending ? disputeInfo.followUpRequestedFrom : disputeInfo.respondedBy,
+                  'Participant',
+                )}</small>
                 {!followUpPending && disputeInfo.respondedAt > 0 && (
                   <><strong>Response</strong><p>{disputeInfo.responseDetails}</p></>
                 )}
@@ -822,11 +903,27 @@ function AgreementDetail() {
                   : `${formatDeadlineDuration(arbitratorResponseSecondsRemaining)} remain, until ${formatDate(arbitratorResponseDeadline)}.`}
               </p>
             </div>
+            <div className="arbitration-party-grid">
+              <ParticipantIdentity
+                address={agreement.shipper}
+                copied={copiedAddress === agreement.shipper.toLowerCase()}
+                label="Shipper"
+                name={shipperName}
+                onCopy={copyPublicKey}
+              />
+              <ParticipantIdentity
+                address={agreement.carrier}
+                copied={copiedAddress === agreement.carrier.toLowerCase()}
+                label="Carrier"
+                name={carrierName}
+                onCopy={copyPublicKey}
+              />
+            </div>
             <div className="detail-grid">
               <div>
                 <small>Opened by</small>
                 <strong title={disputeInfo?.openedBy || ''}>
-                  {disputeInfo?.openedBy ? shortAddress(disputeInfo.openedBy) : 'Unavailable'}
+                  {disputeInfo?.openedBy ? `${openedByName} · ${shortAddress(disputeInfo.openedBy)}` : 'Unavailable'}
                 </strong>
               </div>
               <div><small>Remaining escrow</small><strong>{agreement.remainingEth} ETH</strong></div>
@@ -852,7 +949,10 @@ function AgreementDetail() {
                 )}
                 {disputeInfo.followUpRound > 0 && (
                   <div className="notice">
-                    <strong>Follow-up #{disputeInfo.followUpRound} for {shortAddress(followUpPending ? disputeInfo.followUpRequestedFrom : disputeInfo.respondedBy)}</strong>
+                    <strong>Follow-up #{disputeInfo.followUpRound} for {profileName(
+                      followUpPending ? disputeInfo.followUpRequestedFrom : disputeInfo.respondedBy,
+                      'Participant',
+                    )}</strong>
                     <p>{disputeInfo.followUpQuestion}</p>
                     {!followUpPending && disputeInfo.respondedAt > 0
                       ? <><strong>Response</strong><p>{disputeInfo.responseDetails}</p></>
@@ -903,8 +1003,8 @@ function AgreementDetail() {
               <div className="dispute-response-form">
                 <h4>Request more information</h4>
                 <div className="resolution-options">
-                  <button className={`btn ${followUpTarget === agreement.shipper ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFollowUpTarget(agreement.shipper)} type="button">Ask Shipper</button>
-                  <button className={`btn ${followUpTarget === agreement.carrier ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFollowUpTarget(agreement.carrier)} type="button">Ask Carrier</button>
+                  <button className={`btn ${followUpTarget === agreement.shipper ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFollowUpTarget(agreement.shipper)} type="button">Ask {shipperName}</button>
+                  <button className={`btn ${followUpTarget === agreement.carrier ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFollowUpTarget(agreement.carrier)} type="button">Ask {carrierName}</button>
                 </div>
                 <label htmlFor="follow-up-question">Question or information required</label>
                 <textarea
@@ -929,13 +1029,13 @@ function AgreementDetail() {
             <p>Choose a clear final outcome. The confirmation dialog shows the exact amount each party receives before MetaMask opens.</p>
             <div className="resolution-options">
               <button className="btn btn-secondary" disabled={arbitratorResponseExpired || Boolean(busyAction)} onClick={() => setArbitratorDecision('shipper')} type="button">
-                Pay all to Shipper
+                Pay all to {shipperName}
               </button>
               <button className="btn btn-secondary" disabled={arbitratorResponseExpired || Boolean(busyAction)} onClick={() => setArbitratorDecision('half')} type="button">
                 Split 50 / 50
               </button>
               <button className="btn btn-secondary" disabled={arbitratorResponseExpired || Boolean(busyAction)} onClick={() => setArbitratorDecision('carrier')} type="button">
-                Pay all to Carrier
+                Pay all to {carrierName}
               </button>
             </div>
           </div>
@@ -1213,11 +1313,11 @@ function AgreementDetail() {
               <strong>This closes the agreement and cannot be undone.</strong>
               <div className="resolution-preview">
                 <span>
-                  <small>Shipper receives</small>
+                  <small>{shipperName} · Shipper receives</small>
                   <strong>{ethers.formatEther(arbitratorPayout.shipperAmount)} ETH</strong>
                 </span>
                 <span>
-                  <small>Carrier receives</small>
+                  <small>{carrierName} · Carrier receives</small>
                   <strong>{ethers.formatEther(arbitratorPayout.carrierAmount)} ETH</strong>
                 </span>
               </div>
