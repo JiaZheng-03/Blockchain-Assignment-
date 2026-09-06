@@ -1,7 +1,7 @@
 {
-  "address": "0x2ee975EC8C4cEFEEd1de1e9954AC5b7792D0B70c",
+  "address": "0x7C9d26200601337953f70dFD208C2d07D8e05bb0",
   "chainId": 11155111,
-  "deploymentBlock": 11644429,
+  "deploymentBlock": 11645401,
   "abi": [
     {
       "inputs": [],
@@ -519,6 +519,43 @@
         }
       ],
       "name": "CarrierReputationAwarded",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "carrier",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "points",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "totalPoints",
+          "type": "uint256"
+        }
+      ],
+      "name": "CarrierReputationDeducted",
       "type": "event"
     },
     {
@@ -1211,6 +1248,19 @@
     {
       "inputs": [],
       "name": "MIN_SCHEDULE_DELAY",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "REPUTATION_PENALTY_PER_DELAY",
       "outputs": [
         {
           "internalType": "uint256",
