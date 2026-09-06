@@ -11,17 +11,23 @@ export default function Sidebar({ onClose }) {
   const authenticatedProfile = isAuthenticated ? profile : null;
   const authenticatedShipper = isAuthenticated && isShipper;
   const authenticatedArbitrator = isAuthenticated && isArbitrator;
-  const groups = [
-    { label: 'Workspace', items: [
-      ['/', 'Overview', 'globe'],
-      ['/dashboard', authenticatedArbitrator ? 'Arbitration' : 'Dashboard', 'grid'],
-      ['/history', authenticatedArbitrator ? 'Dispute history' : 'Transactions', 'arrows'],
-      ...(authenticatedShipper ? [['/create-agreement', 'New agreement', 'plus']] : []),
-    ] },
-    { label: 'Account', items: [
-      ['/profile', 'Wallet & profile', 'wallet'],
-    ] },
-  ];
+  const groups = isAuthenticated
+    ? [
+        { label: 'Workspace', items: [
+          ['/', 'Overview', 'globe'],
+          ['/dashboard', authenticatedArbitrator ? 'Arbitration' : 'Dashboard', 'grid'],
+          ['/history', authenticatedArbitrator ? 'Dispute history' : 'Transactions', 'arrows'],
+          ...(authenticatedShipper ? [['/create-agreement', 'New agreement', 'plus']] : []),
+        ] },
+        { label: 'Account', items: [
+          ['/profile', 'Wallet & profile', 'wallet'],
+        ] },
+      ]
+    : [
+        { label: 'Workspace', items: [
+          ['/', 'Overview', 'globe'],
+        ] },
+      ];
   return (
     <aside className="sidebar" id="workspace-navigation">
       <div className="sidebar-brand-row">
