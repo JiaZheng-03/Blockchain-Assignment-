@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import Icon from './Icon';
 import { useNotifications } from '../context/NotificationContext';
 import { nextUnreadSelection, notificationPosition } from '../utils/notifications';
 
@@ -55,13 +56,13 @@ function AgreementRejectionNotice() {
           <time dateTime={new Date(notice.timestamp * 1000).toISOString()}>{new Date(notice.timestamp * 1000).toLocaleString()}</time>
         </div>
         <p>{position + 1} of {pending.length} unread updates</p>
-        <div className="confirmation-actions notification-dialog-actions">
-          <button type="button" disabled={position === 0} onClick={() => setSelection({ key: pending[position - 1].key, index: position - 1 })}>Previous</button>
-          <button type="button" disabled={position === pending.length - 1} onClick={() => setSelection({ key: pending[position + 1].key, index: position + 1 })}>Next</button>
-          <button type="button" onClick={readCurrent}>Mark as Read</button>
-          {unreadCount > 1 && <button type="button" onClick={() => { markAllRead(); setSelection(null); }}>Mark All as Read</button>}
-          <Link className="notification-view-link" to={`/agreement/${notice.agreementId}`} onClick={() => { markRead(notice.key); dismiss(); }}>View Agreement</Link>
-          <button type="button" onClick={dismiss}>Close</button>
+        <div className="confirmation-actions notification-actions notification-dialog-actions">
+          <button className="btn btn-secondary notification-action notification-action-quiet" type="button" disabled={position === 0} onClick={() => setSelection({ key: pending[position - 1].key, index: position - 1 })}>Previous</button>
+          <button className="btn btn-secondary notification-action notification-action-quiet" type="button" disabled={position === pending.length - 1} onClick={() => setSelection({ key: pending[position + 1].key, index: position + 1 })}>Next</button>
+          <button className="btn btn-secondary notification-action" type="button" onClick={readCurrent}><Icon name="check" size={16} />Mark as Read</button>
+          {unreadCount > 1 && <button className="btn btn-secondary notification-action" type="button" onClick={() => { markAllRead(); setSelection(null); }}><Icon name="check" size={16} />Mark All as Read</button>}
+          <Link className="btn btn-primary notification-action" to={`/agreement/${notice.agreementId}`} onClick={() => { markRead(notice.key); dismiss(); }}>View Agreement</Link>
+          <button className="btn btn-secondary notification-action notification-action-quiet" type="button" onClick={dismiss}>Close</button>
         </div>
       </section>
     </div>

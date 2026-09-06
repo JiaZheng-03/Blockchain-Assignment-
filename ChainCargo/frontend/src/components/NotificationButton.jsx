@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import Icon from './Icon';
 import { useWallet } from '../context/WalletContext';
 import { useContract } from '../context/ContractContext';
 import { useProfile } from '../hooks/useProfile';
@@ -141,9 +142,9 @@ function NotificationButton() {
             </div>
             {permission === 'granted' && <span className="badge">Browser alerts on</span>}
           </div>
-          <div className="notification-item-actions">
-            <button type="button" disabled={unreadCount === 0} onClick={markAllRead}>
-              Mark All as Read
+          <div className="notification-actions notification-item-actions">
+            <button className="btn btn-secondary notification-action" type="button" disabled={unreadCount === 0} onClick={markAllRead}>
+              <Icon name="check" size={16} />Mark All as Read
             </button>
           </div>
           {error && <p role="status" className="notification-permission-warning">{error}</p>}
@@ -153,9 +154,9 @@ function NotificationButton() {
                 <strong>{notice.title} {!notice.read && <span className="badge">Unread</span>}</strong>
                 <span>{notice.message}</span>
                 <time dateTime={new Date(notice.timestamp * 1000).toISOString()}>{new Date(notice.timestamp * 1000).toLocaleString()}</time>
-                <div className="notification-item-actions">
-                  <Link to={`/agreement/${notice.agreementId}`} onClick={() => { markRead(notice.key); setOpen(false); }}>View Agreement</Link>
-                  {!notice.read && <button type="button" onClick={() => markRead(notice.key)}>Mark as Read</button>}
+                <div className="notification-actions notification-item-actions">
+                  <Link className="btn btn-primary notification-action" to={`/agreement/${notice.agreementId}`} onClick={() => { markRead(notice.key); setOpen(false); }}>View Agreement</Link>
+                  {!notice.read && <button className="btn btn-secondary notification-action" type="button" onClick={() => markRead(notice.key)}><Icon name="check" size={16} />Mark as Read</button>}
                 </div>
               </article>
             ))}

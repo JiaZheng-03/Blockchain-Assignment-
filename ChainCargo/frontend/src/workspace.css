@@ -480,11 +480,77 @@ input[aria-invalid='true']:focus, select[aria-invalid='true']:focus, textarea[ar
 
 /* Received updates reuse the existing popup and notification center palette. */
 .received-notification-popup .toast-message { overflow-wrap: anywhere; max-height: 40vh; overflow-y: auto; }
-.notification-dialog-actions { flex-wrap: wrap; }
-.notification-dialog-actions button { flex: 1 1 auto; }
-.notification-view-link { display: inline-flex; align-items: center; justify-content: center; padding: 12px 18px; border-radius: 10px; background: var(--accent, #226c50); color: white; }
-.notification-item-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.notification-item-actions button { padding: 6px 10px; font-size: 12px; }
+.received-notification-popup { max-height: calc(100dvh - 2rem); overflow-y: auto; }
+.notification-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.notification-dialog-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+.notification-item-actions { margin-block: 8px; }
+
+/* Scope overrides to notification actions, including the generic toast button rules. */
+.notification-actions .btn.notification-action {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px;
+  margin: 0;
+  padding: 8px 12px;
+  gap: 6px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  filter: none;
+}
+.notification-actions .notification-action.btn-secondary {
+  color: var(--primary);
+  background: var(--surface);
+  border-color: var(--primary-border);
+}
+.notification-actions .notification-action.btn-primary {
+  color: var(--on-primary);
+  background: var(--primary-gradient);
+  border-color: var(--primary);
+}
+.notification-actions .notification-action.notification-action-quiet {
+  color: var(--muted);
+  background: var(--surface-inset);
+  border-color: var(--border);
+}
+.notification-actions .notification-action:hover:not(:disabled),
+.notification-actions .notification-action:focus-visible {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.notification-actions .btn-secondary:hover:not(:disabled) {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+.notification-actions .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+.notification-actions .notification-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.notification-actions .notification-action:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: inset 0 0 0 1px var(--accent-border);
+}
+.notification-actions .notification-action:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+@media (max-width: 480px) {
+  .received-notification-popup { padding: 20px 16px; }
+  .notification-actions .btn.notification-action { min-height: 44px; }
+  .notification-item-actions > .btn { flex: 1 1 auto; }
+}
 .notification-item time { font-size: 12px; opacity: .75; }
 .notification-read { opacity: .75; }
 .notification-popover { max-height: min(75vh, 680px); overflow-y: auto; }
