@@ -1,7 +1,7 @@
 {
-  "address": "0x7C9d26200601337953f70dFD208C2d07D8e05bb0",
+  "address": "0x46CA48815C4C63269722F50D8d94a517859e814D",
   "chainId": 11155111,
-  "deploymentBlock": 11645401,
+  "deploymentBlock": 11674558,
   "abi": [
     {
       "inputs": [],
@@ -69,6 +69,11 @@
     {
       "inputs": [],
       "name": "DeadlineRefundAvailable",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "DisputeEvidenceRequired",
       "type": "error"
     },
     {
@@ -272,6 +277,17 @@
       "type": "error"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        }
+      ],
+      "name": "MilestoneDisputeAlreadyRequested",
+      "type": "error"
+    },
+    {
       "inputs": [],
       "name": "NoActiveDispute",
       "type": "error"
@@ -289,6 +305,17 @@
     {
       "inputs": [],
       "name": "NotRegistered",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "availableAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "ParticipantResponsePeriodActive",
       "type": "error"
     },
     {
@@ -1026,254 +1053,7 @@
     },
     {
       "inputs": [],
-      "name": "ARBITRATOR_RESPONSE_PERIOD",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "CARRIER_ACCEPTANCE_PERIOD",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
       "name": "CONTRACT_VERSION",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "EVIDENCE_RESUBMISSION_PERIOD",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "EVIDENCE_REVIEW_PERIOD",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "EVIDENCE_URI_SCHEME",
-      "outputs": [
-        {
-          "internalType": "string",
-          "name": "",
-          "type": "string"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "EXTENSION_COMPENSATION_BPS",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "EXTENSION_DURATION",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "EXTENSION_REQUEST_WINDOW",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "MAX_AGREEMENT_NOTES_LENGTH",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "MAX_AGREEMENT_TITLE_LENGTH",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "MAX_DISPUTE_REASON_LENGTH",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "MAX_MILESTONES",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "MAX_MILESTONE_DETAILS_LENGTH",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "MAX_MILESTONE_NAME_LENGTH",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "MAX_PROFILE_NAME_LENGTH",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "MAX_PROOF_URI_LENGTH",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "MIN_SCHEDULE_DELAY",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "REPUTATION_PENALTY_PER_DELAY",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "REPUTATION_POINTS_PER_MILESTONE",
       "outputs": [
         {
           "internalType": "uint256",
@@ -1610,9 +1390,68 @@
           "internalType": "uint256",
           "name": "agreementId",
           "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
         }
       ],
-      "name": "getDisputeRequest",
+      "name": "getExtensionRequest",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "requestedAt",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "proposedDueAt",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint256",
+          "name": "compensation",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "requested",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "pending",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "approved",
+          "type": "bool"
+        },
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "agreementId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "milestoneIndex",
+          "type": "uint256"
+        }
+      ],
+      "name": "getMilestoneDispute",
       "outputs": [
         {
           "components": [
@@ -1685,60 +1524,6 @@
           "internalType": "struct LogisticsEscrow.DisputeRequest",
           "name": "",
           "type": "tuple"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "agreementId",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "milestoneIndex",
-          "type": "uint256"
-        }
-      ],
-      "name": "getExtensionRequest",
-      "outputs": [
-        {
-          "internalType": "uint64",
-          "name": "requestedAt",
-          "type": "uint64"
-        },
-        {
-          "internalType": "uint64",
-          "name": "proposedDueAt",
-          "type": "uint64"
-        },
-        {
-          "internalType": "uint256",
-          "name": "compensation",
-          "type": "uint256"
-        },
-        {
-          "internalType": "bool",
-          "name": "requested",
-          "type": "bool"
-        },
-        {
-          "internalType": "bool",
-          "name": "pending",
-          "type": "bool"
-        },
-        {
-          "internalType": "bool",
-          "name": "approved",
-          "type": "bool"
-        },
-        {
-          "internalType": "string",
-          "name": "reason",
-          "type": "string"
         }
       ],
       "stateMutability": "view",

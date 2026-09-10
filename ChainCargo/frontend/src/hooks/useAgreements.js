@@ -48,17 +48,21 @@ export function useAgreements({ arbitration = false } = {}) {
           : await contract.getUserAgreementIds(account);
         let results = await Promise.all(
           ids.map(async (id) => {
-            const [rawAgreement, acceptanceDeadline, dispute] = await Promise.all([
+            const [rawAgreement, acceptanceDeadline, milestoneDisputes] = await Promise.all([
               contract.getAgreement(id),
               contract.carrierAcceptanceDeadline(id),
               arbitration
-                ? contract.getDisputeRequest(id).catch(() => null)
-                : null,
+                ? Promise.all([0, 1].map((milestoneIndex) => (
+                    contract.getMilestoneDispute(id, milestoneIndex).catch(() => null)
+                  )))
+                : [],
             ]);
             const agreement = {
               ...normalizeAgreement(id, rawAgreement),
               carrierAcceptanceDeadline: Number(acceptanceDeadline),
-              hasArbitrationHistory: Boolean(dispute && Number(dispute.openedAt) > 0),
+              hasArbitrationHistory: milestoneDisputes.some(
+                (dispute) => dispute && Number(dispute.openedAt) > 0,
+              ),
             };
             if (agreement.status !== 0) return agreement;
 

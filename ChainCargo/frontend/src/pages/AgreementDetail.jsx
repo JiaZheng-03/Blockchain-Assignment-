@@ -27,6 +27,21 @@ import ReplacementEvidenceAction from '../components/ReplacementEvidenceAction';
 
 const shortAddress = (address) => `${address.slice(0, 6)}…${address.slice(-4)}`;
 const formatDate = (timestamp) => new Date(timestamp * 1000).toLocaleString();
+const normalizeDispute = (dispute) => ({
+  milestoneIndex: Number(dispute.milestoneIndex),
+  openedAt: Number(dispute.openedAt),
+  openedBy: dispute.openedBy,
+  reason: dispute.reason,
+  respondedAt: Number(dispute.respondedAt),
+  respondedBy: dispute.respondedBy,
+  responseDetails: dispute.responseDetails,
+  resolutionReason: dispute.resolutionReason,
+  followUpRound: Number(dispute.followUpRound),
+  followUpRequestedFrom: dispute.followUpRequestedFrom,
+  followUpQuestion: dispute.followUpQuestion,
+  active: Boolean(dispute.active),
+  type: dispute.reviewTimeout ? 'review-timeout' : 'participant-dispute',
+});
 
 function ParticipantIdentity({ address, copied, label, name, onCopy }) {
   return (
@@ -74,6 +89,7 @@ function AgreementDetail() {
   const [participantProfiles, setParticipantProfiles] = useState({});
   const [copiedAddress, setCopiedAddress] = useState('');
   const [disputeInfo, setDisputeInfo] = useState(null);
+  const [milestoneDisputes, setMilestoneDisputes] = useState({});
   const [disputeLookupError, setDisputeLookupError] = useState('');
   const [busyAction, setBusyAction] = useState('');
   const [evidenceDecision, setEvidenceDecision] = useState(null);
@@ -171,32 +187,25 @@ function AgreementDetail() {
       setParticipantProfiles(Object.fromEntries(identityEntries));
       setDisputeInfo(null);
       setDisputeLookupError('');
-      if ([0, 1, 3, 4].includes(Number(rawAgreement.status))) {
+      const milestoneDisputeEntries = await Promise.all(rawMilestones.map(async (_, milestoneIndex) => {
         try {
-          const dispute = await contract.getDisputeRequest(id);
-          if (Number(dispute.openedAt) > 0) {
-            setDisputeInfo({
-              milestoneIndex: Number(dispute.milestoneIndex),
-              openedAt: Number(dispute.openedAt),
-              openedBy: dispute.openedBy,
-              reason: dispute.reason,
-              respondedAt: Number(dispute.respondedAt),
-              respondedBy: dispute.respondedBy,
-              responseDetails: dispute.responseDetails,
-              resolutionReason: dispute.resolutionReason,
-              followUpRound: Number(dispute.followUpRound),
-              followUpRequestedFrom: dispute.followUpRequestedFrom,
-              followUpQuestion: dispute.followUpQuestion,
-              active: Boolean(dispute.active),
-              type: dispute.reviewTimeout ? 'review-timeout' : 'participant-dispute',
-            });
-          } else {
-            setDisputeLookupError('No active dispute record was found for this agreement.');
-          }
+          const dispute = await contract.getMilestoneDispute(id, milestoneIndex);
+          return Number(dispute.openedAt) > 0
+            ? [milestoneIndex, normalizeDispute(dispute)]
+            : null;
         } catch {
-          setDisputeLookupError('The on-chain dispute details could not be loaded.');
+          return null;
         }
+      }));
+      const disputeRecords = Object.fromEntries(milestoneDisputeEntries.filter(Boolean));
+      const latestDispute = Object.values(disputeRecords)
+        .sort((left, right) => right.openedAt - left.openedAt)[0] || null;
+      if (latestDispute) {
+        setDisputeInfo(latestDispute);
+      } else if (Number(rawAgreement.status) === 3) {
+        setDisputeLookupError('The on-chain dispute details could not be loaded.');
       }
+      setMilestoneDisputes(disputeRecords);
     } catch (loadError) {
       if (!silent) setError(friendlyContractError(loadError));
     } finally {
@@ -516,6 +525,11 @@ function AgreementDetail() {
     && nowSeconds > agreement.carrierAcceptanceDeadline;
   const isFinalEvidenceConfirmation = evidenceDecision?.type === 'confirm'
     && evidenceDecision.milestone.index === milestones.length - 1;
+  const currentMilestoneDispute = milestoneDisputes[agreement.nextMilestone];
+  const canRequestDispute = agreement.status === 0
+    && (isShipper || isCarrier)
+    && currentMilestone?.state === 1
+    && !currentMilestoneDispute?.openedAt;
   const canRespondToDispute = agreement.status === 3
     && Boolean(disputeInfo)
     && (isShipper || isCarrier)
@@ -534,6 +548,14 @@ function AgreementDetail() {
     disputeInfo?.followUpRequestedFrom
     && disputeInfo.followUpRequestedFrom !== ethers.ZeroAddress
   );
+  const participantResponseDeadline = disputeInfo?.openedAt
+    ? disputeInfo.openedAt + (24 * 60 * 60)
+    : 0;
+  const participantResponsePending = agreement.status === 3
+    && disputeInfo?.type === 'participant-dispute'
+    && disputeInfo.respondedBy === ethers.ZeroAddress
+    && nowSeconds < participantResponseDeadline;
+  const arbitratorActionReady = !participantResponsePending && !followUpPending;
   const canSubmitFollowUp = agreement.status === 3
     && followUpPending
     && normalizedAccount === disputeInfo.followUpRequestedFrom?.toLowerCase();
@@ -862,7 +884,7 @@ function AgreementDetail() {
           </div>
         )}
 
-        {agreement.status === 0 && (isShipper || isCarrier) && (
+        {canRequestDispute && (
           <div className="action-panel dispute-request-panel">
             <div className="dispute-request-heading">
               <span className="dispute-status-mark" aria-hidden="true">!</span>
@@ -894,90 +916,139 @@ function AgreementDetail() {
         )}
 
         {agreement.status === 3 && isArbitrator && (
-          <div className="action-panel">
-            <h3>Arbitrator resolution</h3>
-            <div className={`notice ${arbitratorResponseExpired ? 'error' : ''}`}>
-              <strong>{arbitratorResponseExpired ? 'Your response period has expired' : '48-hour response deadline'}</strong>
-              <p>
-                {arbitratorResponseExpired
-                  ? 'Resolution actions are now locked. The Shipper or Carrier may cancel the agreement and refund the remaining escrow to the Shipper.'
-                  : `${formatDeadlineDuration(arbitratorResponseSecondsRemaining)} remain, until ${formatDate(arbitratorResponseDeadline)}.`}
-              </p>
-            </div>
-            <div className="arbitration-party-grid">
-              <ParticipantIdentity
-                address={agreement.shipper}
-                copied={copiedAddress === agreement.shipper.toLowerCase()}
-                label="Shipper"
-                name={shipperName}
-                onCopy={copyPublicKey}
-              />
-              <ParticipantIdentity
-                address={agreement.carrier}
-                copied={copiedAddress === agreement.carrier.toLowerCase()}
-                label="Carrier"
-                name={carrierName}
-                onCopy={copyPublicKey}
-              />
-            </div>
-            <div className="detail-grid">
+          <div className="action-panel arbitrator-resolution-panel">
+            <header className="arbitrator-panel-header">
               <div>
-                <small>Opened by</small>
-                <strong title={disputeInfo?.openedBy || ''}>
-                  {disputeInfo?.openedBy ? `${openedByName} · ${shortAddress(disputeInfo.openedBy)}` : 'Unavailable'}
+                <span className="eyebrow">DISPUTE CASE</span>
+                <h3>Arbitrator resolution</h3>
+              </div>
+              <div className={`arbitrator-deadline ${arbitratorResponseExpired ? 'expired' : ''}`}>
+                <small>{arbitratorResponseExpired ? 'Response period expired' : 'Decision due'}</small>
+                <strong>
+                  {arbitratorResponseExpired
+                    ? 'Actions locked'
+                    : formatDeadlineDuration(arbitratorResponseSecondsRemaining)}
                 </strong>
+                <span>{formatDate(arbitratorResponseDeadline)}</span>
               </div>
-              <div><small>Remaining escrow</small><strong>{agreement.remainingEth} ETH</strong></div>
-              <div>
-                <small>Current milestone</small>
-                <strong>{currentMilestone ? `${currentMilestone.index + 1}. ${currentMilestone.name}` : 'Unavailable'}</strong>
-              </div>
-              <div>
-                <small>Evidence state</small>
-                <strong>{currentMilestone?.statusLabel || 'Unavailable'}</strong>
-              </div>
-            </div>
-            {disputeInfo ? (
-              <>
-                <div className="notice"><strong>Initial dispute details</strong><p>{disputeInfo.reason}</p></div>
-                {disputeInfo.respondedBy !== ethers.ZeroAddress ? (
-                  <div className="notice">
-                    <strong>Other party response</strong>
-                    <p>{disputeInfo.responseDetails}</p>
-                  </div>
-                ) : (
-                  <div className="notice">The other party has not submitted a response.</div>
-                )}
-                {disputeInfo.followUpRound > 0 && (
-                  <div className="notice">
-                    <strong>Follow-up #{disputeInfo.followUpRound} for {profileName(
-                      followUpPending ? disputeInfo.followUpRequestedFrom : disputeInfo.respondedBy,
-                      'Participant',
-                    )}</strong>
-                    <p>{disputeInfo.followUpQuestion}</p>
-                    {!followUpPending && disputeInfo.respondedAt > 0
-                      ? <><strong>Response</strong><p>{disputeInfo.responseDetails}</p></>
-                      : <small>Waiting for the requested participant's response.</small>}
-                  </div>
-                )}
-              </>
-            ) : disputeLookupError ? (
-              <div className="notice error">{disputeLookupError}</div>
-            ) : (
-              <div className="notice">Loading the dispute event…</div>
-            )}
-            {currentMilestone?.proofHash !== ethers.ZeroHash && (
-              <div className="proof-box">
-                <small>Current evidence hash</small>
-                <code>{currentMilestone.proofHash}</code>
-                <small>Evidence URI</small>
-                <code>{currentMilestone.proofURI}</code>
+            </header>
+
+            {arbitratorResponseExpired && (
+              <div className="notice error">
+                Resolution actions are locked. The Shipper or Carrier may cancel the agreement and refund the remaining escrow to the Shipper.
               </div>
             )}
+            {!arbitratorResponseExpired && participantResponsePending && (
+              <div className="notice">
+                <strong>Waiting for the other party's statement</strong>
+                <p>
+                  The Arbitrator can act as soon as a response is submitted, or after {formatDate(participantResponseDeadline)}
+                  {' '}({formatDeadlineDuration(participantResponseDeadline - nowSeconds)} remaining).
+                </p>
+              </div>
+            )}
+
+            <section className="arbitrator-section" aria-labelledby="case-overview-title">
+              <div className="arbitrator-section-heading">
+                <span className="arbitrator-section-number">1</span>
+                <div>
+                  <h4 id="case-overview-title">Case overview</h4>
+                  <p>Confirm the parties, milestone, and amount under review.</p>
+                </div>
+              </div>
+              <div className="arbitration-party-grid">
+                <ParticipantIdentity
+                  address={agreement.shipper}
+                  copied={copiedAddress === agreement.shipper.toLowerCase()}
+                  label="Shipper"
+                  name={shipperName}
+                  onCopy={copyPublicKey}
+                />
+                <ParticipantIdentity
+                  address={agreement.carrier}
+                  copied={copiedAddress === agreement.carrier.toLowerCase()}
+                  label="Carrier"
+                  name={carrierName}
+                  onCopy={copyPublicKey}
+                />
+              </div>
+              <div className="detail-grid arbitrator-case-facts">
+                <div>
+                  <small>Opened by</small>
+                  <strong title={disputeInfo?.openedBy || ''}>
+                    {disputeInfo?.openedBy ? `${openedByName} · ${shortAddress(disputeInfo.openedBy)}` : 'Unavailable'}
+                  </strong>
+                </div>
+                <div><small>Remaining escrow</small><strong>{agreement.remainingEth} ETH</strong></div>
+                <div>
+                  <small>Current milestone</small>
+                  <strong>{currentMilestone ? `${currentMilestone.index + 1}. ${currentMilestone.name}` : 'Unavailable'}</strong>
+                </div>
+                <div>
+                  <small>Evidence state</small>
+                  <strong>{currentMilestone?.statusLabel || 'Unavailable'}</strong>
+                </div>
+              </div>
+            </section>
+
+            <section className="arbitrator-section" aria-labelledby="case-statements-title">
+              <div className="arbitrator-section-heading">
+                <span className="arbitrator-section-number">2</span>
+                <div>
+                  <h4 id="case-statements-title">Statements</h4>
+                  <p>Review what each party submitted before making a decision.</p>
+                </div>
+              </div>
+              {disputeInfo ? (
+                <div className="arbitrator-statements">
+                  <article>
+                    <small>Initial dispute details</small>
+                    <p>{disputeInfo.reason}</p>
+                  </article>
+                  <article>
+                    <small>Other party response</small>
+                    <p>{disputeInfo.respondedBy !== ethers.ZeroAddress
+                      ? disputeInfo.responseDetails
+                      : 'No response has been submitted yet.'}</p>
+                  </article>
+                  {disputeInfo.followUpRound > 0 && (
+                    <article className="arbitrator-follow-up">
+                      <small>Follow-up #{disputeInfo.followUpRound} · {profileName(
+                        followUpPending ? disputeInfo.followUpRequestedFrom : disputeInfo.respondedBy,
+                        'Participant',
+                      )}</small>
+                      <strong>{disputeInfo.followUpQuestion}</strong>
+                      <p>{!followUpPending && disputeInfo.respondedAt > 0
+                        ? disputeInfo.responseDetails
+                        : 'Waiting for the requested participant\'s response.'}</p>
+                    </article>
+                  )}
+                </div>
+              ) : disputeLookupError ? (
+                <div className="notice error">{disputeLookupError}</div>
+              ) : (
+                <div className="notice">Loading the dispute event...</div>
+              )}
+            </section>
+
             {currentMilestone?.proofHash !== ethers.ZeroHash && (
-              <>
-                <h4>Resolve the current milestone evidence</h4>
-                <p>Approve the evidence to pay this milestone to the Carrier, or request replacement evidence without moving escrow. Either decision ends the dispute and continues the agreement. Paused time is added back to all remaining deadlines.</p>
+              <section className="arbitrator-section" aria-labelledby="evidence-decision-title">
+                <div className="arbitrator-section-heading">
+                  <span className="arbitrator-section-number">3</span>
+                  <div>
+                    <h4 id="evidence-decision-title">Evidence decision</h4>
+                    <p>Approve this milestone or ask the Carrier to replace its evidence.</p>
+                  </div>
+                </div>
+                <details className="arbitrator-evidence-reference">
+                  <summary>View on-chain evidence reference</summary>
+                  <div className="proof-box">
+                    <small>Current evidence hash</small>
+                    <code>{currentMilestone.proofHash}</code>
+                    <small>Evidence URI</small>
+                    <code>{currentMilestone.proofURI}</code>
+                  </div>
+                </details>
                 <label htmlFor="arbitrator-resolution-reason">Reason for this decision</label>
                 <textarea
                   id="arbitrator-resolution-reason"
@@ -986,72 +1057,88 @@ function AgreementDetail() {
                   value={arbitratorReason}
                   onChange={(event) => setArbitratorReason(event.target.value)}
                 />
-                <small>This reason is required, must be no more than 1,000 UTF-8 bytes, and will be recorded on-chain and shown to the Shipper and Carrier.</small>
-                <button
-                  className="btn btn-primary"
-                  disabled={arbitratorResponseExpired || Boolean(busyAction) || !isValidDisputeText(arbitratorReason)}
-                  onClick={() => transact(
-                    'continue-payment',
-                    (contract) => contract.resolveDisputeAndContinue(id, true, arbitratorReason.trim()),
-                  )}
-                  type="button"
-                >
-                  Approve milestone & continue
-                </button>
-                <ReplacementEvidenceAction
-                  id={id}
-                  isArbitrator={Boolean(account) && isArbitrator && participantProfiles[normalizedAccount]?.role === 3}
-                  status={agreement.status}
-                  responseDeadline={arbitratorResponseDeadline}
-                  nowSeconds={nowSeconds}
-                  milestone={milestones[disputeInfo?.milestoneIndex]}
-                  busyAction={busyAction}
-                  reason={arbitratorReason}
-                  confirmationOpen={replacementConfirmationOpen}
-                  setConfirmationOpen={setReplacementConfirmationOpen}
-                  transact={transact}
-                />
-              </>
-            )}
-            {!arbitratorResponseExpired && disputeInfo && (
-              <div className="dispute-response-form">
-                <h4>Request more information</h4>
-                <div className="resolution-options">
-                  <button className={`btn ${followUpTarget === agreement.shipper ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFollowUpTarget(agreement.shipper)} type="button">Ask {shipperName}</button>
-                  <button className={`btn ${followUpTarget === agreement.carrier ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFollowUpTarget(agreement.carrier)} type="button">Ask {carrierName}</button>
+                <small>This required reason is recorded on-chain and shown to both parties.</small>
+                <div className="arbitrator-evidence-actions">
+                  <button
+                    className="btn btn-primary"
+                    disabled={!arbitratorActionReady || arbitratorResponseExpired || Boolean(busyAction) || !isValidDisputeText(arbitratorReason)}
+                    onClick={() => transact(
+                      'continue-payment',
+                      (contract) => contract.resolveDisputeAndContinue(id, true, arbitratorReason.trim()),
+                    )}
+                    type="button"
+                  >
+                    Approve milestone & continue
+                  </button>
+                  <ReplacementEvidenceAction
+                    id={id}
+                    isArbitrator={arbitratorActionReady && Boolean(account) && isArbitrator && participantProfiles[normalizedAccount]?.role === 3}
+                    status={agreement.status}
+                    responseDeadline={arbitratorResponseDeadline}
+                    nowSeconds={nowSeconds}
+                    milestone={milestones[disputeInfo?.milestoneIndex]}
+                    busyAction={busyAction}
+                    reason={arbitratorReason}
+                    confirmationOpen={replacementConfirmationOpen}
+                    setConfirmationOpen={setReplacementConfirmationOpen}
+                    transact={transact}
+                  />
                 </div>
-                <label htmlFor="follow-up-question">Question or information required</label>
-                <textarea
-                  id="follow-up-question"
-                  maxLength="1000"
-                  placeholder="Explain what additional information is required"
-                  value={followUpQuestion}
-                  onChange={(event) => setFollowUpQuestion(event.target.value)}
-                />
-                <small>The current 48-hour Arbitrator deadline does not reset.</small>
-                <button
-                  className="btn btn-secondary"
-                  disabled={Boolean(busyAction) || followUpPending || !followUpTarget || !isValidDisputeText(followUpQuestion)}
-                  onClick={requestAdditionalDisputeResponse}
-                  type="button"
-                >
-                  {busyAction === 'request-follow-up' ? 'Requesting...' : followUpPending ? 'Waiting for response' : 'Request additional response'}
+              </section>
+            )}
+
+            {!arbitratorResponseExpired && disputeInfo && arbitratorActionReady && (
+              <details className="arbitrator-secondary-action" open={followUpPending || undefined}>
+                <summary>
+                  <span>Request more information</span>
+                  <small>Ask either party a follow-up question</small>
+                </summary>
+                <div className="dispute-response-form">
+                  <div className="arbitrator-follow-up-targets">
+                    <button className={`btn ${followUpTarget === agreement.shipper ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFollowUpTarget(agreement.shipper)} type="button">Ask {shipperName}</button>
+                    <button className={`btn ${followUpTarget === agreement.carrier ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFollowUpTarget(agreement.carrier)} type="button">Ask {carrierName}</button>
+                  </div>
+                  <label htmlFor="follow-up-question">Question or information required</label>
+                  <textarea
+                    id="follow-up-question"
+                    maxLength="1000"
+                    placeholder="Explain what additional information is required"
+                    value={followUpQuestion}
+                    onChange={(event) => setFollowUpQuestion(event.target.value)}
+                  />
+                  <small>The current 48-hour Arbitrator deadline does not reset.</small>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={Boolean(busyAction) || followUpPending || !followUpTarget || !isValidDisputeText(followUpQuestion)}
+                    onClick={requestAdditionalDisputeResponse}
+                    type="button"
+                  >
+                    {busyAction === 'request-follow-up' ? 'Requesting...' : followUpPending ? 'Waiting for response' : 'Send request'}
+                  </button>
+                </div>
+              </details>
+            )}
+
+            <section className="arbitrator-section arbitrator-final-outcome" aria-labelledby="final-outcome-title">
+              <div className="arbitrator-section-heading">
+                <span className="arbitrator-section-number">{currentMilestone?.proofHash !== ethers.ZeroHash ? '4' : '3'}</span>
+                <div>
+                  <h4 id="final-outcome-title">Final payout</h4>
+                  <p>Close the agreement and distribute all remaining escrow.</p>
+                </div>
+              </div>
+              <div className="resolution-options">
+                <button className="btn btn-secondary" disabled={!arbitratorActionReady || arbitratorResponseExpired || Boolean(busyAction)} onClick={() => setArbitratorDecision('shipper')} type="button">
+                  Pay all to {shipperName}
+                </button>
+                <button className="btn btn-secondary" disabled={!arbitratorActionReady || arbitratorResponseExpired || Boolean(busyAction)} onClick={() => setArbitratorDecision('half')} type="button">
+                  Split 50 / 50
+                </button>
+                <button className="btn btn-secondary" disabled={!arbitratorActionReady || arbitratorResponseExpired || Boolean(busyAction)} onClick={() => setArbitratorDecision('carrier')} type="button">
+                  Pay all to {carrierName}
                 </button>
               </div>
-            )}
-            <h4>Close the agreement and distribute escrow</h4>
-            <p>Choose a clear final outcome. The confirmation dialog shows the exact amount each party receives before MetaMask opens.</p>
-            <div className="resolution-options">
-              <button className="btn btn-secondary" disabled={arbitratorResponseExpired || Boolean(busyAction)} onClick={() => setArbitratorDecision('shipper')} type="button">
-                Pay all to {shipperName}
-              </button>
-              <button className="btn btn-secondary" disabled={arbitratorResponseExpired || Boolean(busyAction)} onClick={() => setArbitratorDecision('half')} type="button">
-                Split 50 / 50
-              </button>
-              <button className="btn btn-secondary" disabled={arbitratorResponseExpired || Boolean(busyAction)} onClick={() => setArbitratorDecision('carrier')} type="button">
-                Pay all to {carrierName}
-              </button>
-            </div>
+            </section>
           </div>
         )}
       </div>
@@ -1066,6 +1153,7 @@ function AgreementDetail() {
         </div>
         <div className="timeline">
           {milestones.map((milestone) => {
+            const milestoneDispute = milestoneDisputes[milestone.index];
             const isCurrent = milestone.index === agreement.nextMilestone && agreement.status === 0;
             const disputePausedSeconds = agreement.status === 3 && disputeInfo?.openedAt
               ? Math.max(0, nowSeconds - disputeInfo.openedAt)
@@ -1109,6 +1197,49 @@ function AgreementDetail() {
                     <span>{milestone.payoutEth} ETH ({percentage}%)</span>
                     <span>Due {formatDate(milestone.dueAt)}</span>
                   </div>
+                  {milestoneDispute && (
+                    <details
+                      className={`milestone-dispute-record ${milestoneDispute.active ? 'active' : ''}`}
+                      open={milestoneDispute.active || undefined}
+                    >
+                      <summary>
+                        <span className="dispute-status-mark" aria-hidden="true">!</span>
+                        <span>
+                          <strong>{milestoneDispute.active ? 'Active dispute' : 'Dispute record'}</strong>
+                          <small>
+                            Requested by {profileName(milestoneDispute.openedBy, 'Participant')}
+                            {' '}on {formatDate(milestoneDispute.openedAt)}
+                          </small>
+                        </span>
+                        <span className="milestone-dispute-toggle">View details</span>
+                      </summary>
+                      <div className="milestone-dispute-details">
+                        <div>
+                          <small>Dispute details</small>
+                          <p>{milestoneDispute.reason}</p>
+                        </div>
+                        {milestoneDispute.respondedBy !== ethers.ZeroAddress && (
+                          <div>
+                            <small>Participant response</small>
+                            <p>{milestoneDispute.responseDetails}</p>
+                          </div>
+                        )}
+                        {milestoneDispute.followUpRound > 0 && milestoneDispute.followUpQuestion && (
+                          <div>
+                            <small>Latest Arbitrator question</small>
+                            <p>{milestoneDispute.followUpQuestion}</p>
+                          </div>
+                        )}
+                        {milestoneDispute.resolutionReason && (
+                          <div className="milestone-dispute-resolution">
+                            <small>Arbitrator resolution</small>
+                            <p>{milestoneDispute.resolutionReason}</p>
+                          </div>
+                        )}
+                        <small>This milestone has used its one dispute request.</small>
+                      </div>
+                    </details>
+                  )}
                   {milestone.extensionApproved && (
                     <div className="notice">
                       24-hour extension approved · 5% compensation: {ethers.formatEther(milestone.extensionCompensation)} ETH to Shipper · Carrier receives {ethers.formatEther(milestone.payout - milestone.extensionCompensation)} ETH after confirmation.
@@ -1370,8 +1501,12 @@ function AgreementDetail() {
           >
             <h2 id="dispute-confirmation-title">Request Arbitrator action?</h2>
             <div className="toast-message" id="dispute-confirmation-message">
-              <strong>This will pause the active agreement.</strong>
-              <p>The Shipper and Carrier will see the dispute status. Only the Arbitrator can resolve the remaining escrow afterward.</p>
+              <strong>Each milestone can request a dispute only once.</strong>
+              <p>
+                This will use the dispute request for Milestone {currentMilestone?.index + 1}: {currentMilestone?.name} and pause its workflow.
+                The request, responses, and final resolution will remain available inside this milestone for later review.
+              </p>
+              <p>The other party will have up to 24 hours to respond before the Arbitrator can act.</p>
             </div>
             <div className="confirmation-actions">
               <button className="confirmation-cancel" onClick={() => setDisputeConfirmationOpen(false)} type="button">

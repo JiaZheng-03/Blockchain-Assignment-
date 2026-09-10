@@ -33,6 +33,7 @@ const errorMessages = {
   NoEvidenceResubmissionWindow: 'There is no time available for replacement evidence before the next milestone or Final Delivery Deadline.',
   NoActiveDispute: 'This agreement does not have an active dispute to resolve.',
   DisputeResponseAlreadySubmitted: 'The other party has already submitted a response for this dispute.',
+  DisputeEvidenceRequired: 'A dispute can only be opened after the Carrier submits evidence for the current milestone.',
   ArbitratorResponsePeriodActive: 'The Arbitrator still has time to respond to this dispute.',
   ArbitratorResponsePeriodClosed: 'The 48-hour Arbitrator response period has expired. A participant may now cancel the agreement and refund the remaining escrow to the Shipper.',
   FollowUpResponsePending: 'Wait for the requested participant to submit the current follow-up response.',
@@ -73,6 +74,10 @@ function describeCustomError(parsed) {
       return 'Milestone payouts must exactly equal the deposited escrow amount.';
     case 'ReviewPeriodActive':
       return `The evidence review period ends at ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
+    case 'ParticipantResponsePeriodActive':
+      return `The other party may respond before ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}. The Arbitrator cannot decide the case before then unless a response is submitted.`;
+    case 'MilestoneDisputeAlreadyRequested':
+      return `Milestone ${Number(parsed.args.milestoneIndex) + 1} has already used its one dispute request. Open its saved dispute record to review the details.`;
     case 'AcceptancePeriodActive':
       return `The Shipper can cancel this unaccepted agreement after ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
     case 'ExtensionRequestTooEarly':

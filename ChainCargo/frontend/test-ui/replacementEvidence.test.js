@@ -96,6 +96,8 @@ test('refreshed Active replacement workflow enables upload and sends one Carrier
   const notification = { ...item, key: 'tx:1', scope: 'carrier' };
   assert.deepEqual(mergeNotificationQueue([notification], [notification, notification], 'carrier', new Set()), [notification]);
   const source = await readFile(new URL('../src/pages/AgreementDetail.jsx', import.meta.url), 'utf8');
-  assert.ok(source.includes('[0, 1, 3, 4].includes(Number(rawAgreement.status))'));
+  assert.ok(source.includes('contract.getMilestoneDispute(id, milestoneIndex)'));
+  assert.ok(source.includes('setMilestoneDisputes(disputeRecords)'));
+  assert.ok(source.includes('This milestone has used its one dispute request.'));
   assert.ok(source.includes('agreement.status !== 3 && disputeInfo?.resolutionReason'));
 });

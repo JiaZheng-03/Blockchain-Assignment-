@@ -73,14 +73,20 @@ function History() {
           : await contract.getUserAgreementIds(account);
         const candidateRecords = await Promise.all(
           candidateIds.map(async (id) => {
-            const [agreement, dispute] = await Promise.all([
+            const [agreement, milestoneDisputes] = await Promise.all([
               contract.getAgreement(id),
-              isArbitrator ? contract.getDisputeRequest(id).catch(() => null) : null,
+              isArbitrator
+                ? Promise.all([0, 1].map((milestoneIndex) => (
+                    contract.getMilestoneDispute(id, milestoneIndex).catch(() => null)
+                  )))
+                : [],
             ]);
             return {
               agreement,
               id,
-              hasArbitrationHistory: Boolean(dispute && Number(dispute.openedAt) > 0),
+              hasArbitrationHistory: milestoneDisputes.some(
+                (dispute) => dispute && Number(dispute.openedAt) > 0,
+              ),
             };
           }),
         );
