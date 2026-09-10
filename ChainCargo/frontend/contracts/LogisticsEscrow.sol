@@ -125,14 +125,14 @@ contract LogisticsEscrow {
     error NoActiveDispute();
     error DisputeResponseAlreadySubmitted();
     error DisputeEvidenceRequired();
-    error MilestoneDisputeAlreadyRequested(uint256 milestoneIndex);
     error ParticipantResponsePeriodActive(uint64 availableAt);
+    error ParticipantResponsePeriodClosed(uint64 closedAt);
     error ArbitratorResponsePeriodActive(uint64 availableAt);
     error ArbitratorResponsePeriodClosed();
     error FollowUpResponsePending();
 
     address public immutable arbitrator;
-    uint256 public constant CONTRACT_VERSION = 19;
+    uint256 public constant CONTRACT_VERSION = 20;
     string private constant EVIDENCE_URI_SCHEME = "supabase://";
     uint256 private constant MAX_MILESTONES = 2;
     uint256 private constant REPUTATION_POINTS_PER_MILESTONE = 10;
@@ -164,7 +164,7 @@ contract LogisticsEscrow {
     mapping(address => uint256) public carrierReputation;
     mapping(uint256 => mapping(uint256 => string)) private extensionReasons;
     mapping(uint256 => uint64) public carrierAcceptanceDeadline;
-    mapping(uint256 => mapping(uint256 => DisputeRequest)) private milestoneDisputeRequests;
+    mapping(uint256 => mapping(uint256 => DisputeRequest[])) private milestoneDisputeRequests;
     mapping(uint256 => string) public agreementRejectionReason;
 
     uint256 private unlocked = 1;
@@ -224,7 +224,7 @@ contract LogisticsEscrow {
     event EvidenceRevisionRequested(
         uint256 indexed agreementId,
         uint256 indexed milestoneIndex,
-        address indexed shipper,
+        address indexed requester,
         uint64 resubmissionDueAt
     );
     event AgreementCompleted(uint256 indexed agreementId);
@@ -235,6 +235,7 @@ contract LogisticsEscrow {
     );
     event DisputeOpened(
         uint256 indexed agreementId,
+        uint256 indexed milestoneIndex,
         address indexed openedBy,
         string reason
     );
@@ -480,8 +481,12 @@ contract LogisticsEscrow {
         if (agreement.status != AgreementStatus.PendingCarrierAcceptance) {
             revert InvalidStatus();
         }
+        if (block.timestamp > carrierAcceptanceDeadline[agreementId]) {
+            revert AcceptancePeriodClosed();
+        }
         bytes memory reasonBytes = bytes(reason);
-        if (reasonBytes.length == 0 || reasonBytes.length > MAX_DISPUTE_REASON_LENGTH) revert InvalidInput();
+        if (reasonBytes.length == 0) revert InvalidInput();
+        _requireMaximumLength(reason, MAX_DISPUTE_REASON_LENGTH);
         bool hasContent;
         for (uint256 i; i < reasonBytes.length; ++i) {
             if (uint8(reasonBytes[i]) > 32) {
@@ -543,17 +548,18 @@ contract LogisticsEscrow {
     ) private {
         Agreement storage agreement = agreements[agreementId];
         if (agreement.carrier != msg.sender) revert Unauthorized();
-        DisputeRequest storage dispute = _latestDispute(agreementId);
         bool activeWorkflow = agreement.status == AgreementStatus.Active;
-        bool futureEvidenceDuringDispute = agreement.status == AgreementStatus.Disputed &&
-            dispute.active &&
-            milestoneIndex > dispute.milestoneIndex;
+        bool futureEvidenceDuringDispute;
+        uint256 pausedSeconds;
+        if (agreement.status == AgreementStatus.Disputed) {
+            DisputeRequest storage dispute = _latestDispute(agreementId);
+            futureEvidenceDuringDispute = dispute.active &&
+                milestoneIndex > dispute.milestoneIndex;
+            pausedSeconds = block.timestamp - dispute.openedAt;
+        }
         if (!activeWorkflow && !futureEvidenceDuringDispute) revert InvalidStatus();
         if (milestoneIndex >= milestones[agreementId].length)
             revert InvalidMilestone();
-        uint256 pausedSeconds = agreement.status == AgreementStatus.Disputed
-            ? block.timestamp - dispute.openedAt
-            : 0;
         if (block.timestamp > uint256(agreement.deadline) + pausedSeconds)
             revert DeadlinePassed();
 
@@ -935,7 +941,9 @@ contract LogisticsEscrow {
         uint256 agreementId,
         uint256 milestoneIndex
     ) external view agreementExists(agreementId) returns (DisputeRequest memory) {
-        return milestoneDisputeRequests[agreementId][milestoneIndex];
+        DisputeRequest[] storage records = milestoneDisputeRequests[agreementId][milestoneIndex];
+        if (records.length == 0) revert NoActiveDispute();
+        return records[records.length - 1];
     }
 
     /// @notice The participant who did not open the dispute may add one response for the Arbitrator.
@@ -961,6 +969,10 @@ contract LogisticsEscrow {
             if (msg.sender == dispute.openedBy) revert Unauthorized();
             if (dispute.respondedBy != address(0)) {
                 revert DisputeResponseAlreadySubmitted();
+            }
+            uint64 closedAt = dispute.openedAt + uint64(DISPUTE_RESPONSE_PERIOD);
+            if (block.timestamp >= closedAt) {
+                revert ParticipantResponsePeriodClosed(closedAt);
             }
         }
 
@@ -1147,11 +1159,8 @@ contract LogisticsEscrow {
         string memory reason,
         bool reviewTimeout
     ) private {
-        if (milestoneDisputeRequests[agreementId][milestoneIndex].openedAt != 0) {
-            revert MilestoneDisputeAlreadyRequested(milestoneIndex);
-        }
         agreements[agreementId].status = AgreementStatus.Disputed;
-        milestoneDisputeRequests[agreementId][milestoneIndex] = DisputeRequest({
+        milestoneDisputeRequests[agreementId][milestoneIndex].push(DisputeRequest({
             milestoneIndex: milestoneIndex,
             openedAt: uint64(block.timestamp),
             openedBy: openedBy,
@@ -1165,14 +1174,18 @@ contract LogisticsEscrow {
             followUpQuestion: "",
             active: true,
             reviewTimeout: reviewTimeout
-        });
-        emit DisputeOpened(agreementId, openedBy, reason);
+        }));
+        emit DisputeOpened(agreementId, milestoneIndex, openedBy, reason);
     }
 
     function _latestDispute(
         uint256 agreementId
     ) private view returns (DisputeRequest storage) {
-        return milestoneDisputeRequests[agreementId][agreements[agreementId].nextMilestone];
+        DisputeRequest[] storage records = milestoneDisputeRequests[agreementId][
+            agreements[agreementId].nextMilestone
+        ];
+        if (records.length == 0) revert NoActiveDispute();
+        return records[records.length - 1];
     }
 
     function _restoreDisputeTime(
@@ -1192,7 +1205,17 @@ contract LogisticsEscrow {
         uint256 agreementId,
         uint256 milestoneIndex
     ) private {
+        Agreement storage agreement = agreements[agreementId];
         Milestone storage milestone = milestones[agreementId][milestoneIndex];
+        uint64 minimumDueAt = uint64(block.timestamp + EVIDENCE_RESUBMISSION_PERIOD);
+        if (milestone.dueAt < minimumDueAt) {
+            uint64 additionalTime = minimumDueAt - milestone.dueAt;
+            agreement.deadline += additionalTime;
+            Milestone[] storage agreementMilestones = milestones[agreementId];
+            for (uint256 i = milestoneIndex; i < agreementMilestones.length; ++i) {
+                agreementMilestones[i].dueAt += additionalTime;
+            }
+        }
         milestone.proofHash = bytes32(0);
         milestone.proofURI = "";
         milestone.submittedAt = 0;

@@ -33,6 +33,7 @@ const errorMessages = {
   NoEvidenceResubmissionWindow: 'There is no time available for replacement evidence before the next milestone or Final Delivery Deadline.',
   NoActiveDispute: 'This agreement does not have an active dispute to resolve.',
   DisputeResponseAlreadySubmitted: 'The other party has already submitted a response for this dispute.',
+  ParticipantResponsePeriodClosed: 'The 24-hour initial participant response period has expired. Only an Arbitrator-requested follow-up may still be submitted.',
   DisputeEvidenceRequired: 'A dispute can only be opened after the Carrier submits evidence for the current milestone.',
   ArbitratorResponsePeriodActive: 'The Arbitrator still has time to respond to this dispute.',
   ArbitratorResponsePeriodClosed: 'The 48-hour Arbitrator response period has expired. A participant may now cancel the agreement and refund the remaining escrow to the Shipper.',
@@ -76,8 +77,6 @@ function describeCustomError(parsed) {
       return `The evidence review period ends at ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
     case 'ParticipantResponsePeriodActive':
       return `The other party may respond before ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}. The Arbitrator cannot decide the case before then unless a response is submitted.`;
-    case 'MilestoneDisputeAlreadyRequested':
-      return `Milestone ${Number(parsed.args.milestoneIndex) + 1} has already used its one dispute request. Open its saved dispute record to review the details.`;
     case 'AcceptancePeriodActive':
       return `The Shipper can cancel this unaccepted agreement after ${new Date(Number(parsed.args.availableAt) * 1000).toLocaleString()}.`;
     case 'ExtensionRequestTooEarly':
@@ -118,7 +117,7 @@ export function friendlyContractError(error) {
     error?.message ||
     'The blockchain transaction failed.';
   if (message.includes('unknown custom error')) {
-    return 'The contract rejected the transaction. Restart the local chain, redeploy the latest contract, and check the form values.';
+    return 'The contract rejected the transaction. Redeploy the latest contract on the configured network and check the form values.';
   }
   return message.replace('execution reverted: ', '');
 }

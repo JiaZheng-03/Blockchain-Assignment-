@@ -1,0 +1,1 @@
+export const REQUIRED_CONTRACT_VERSION = 20;

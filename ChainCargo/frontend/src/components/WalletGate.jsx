@@ -53,7 +53,7 @@ function WalletGate() {
   }
 
   if (deploymentStatus === 'checking') {
-    return <div className="panel access-panel">Checking the local escrow deployment…</div>;
+    return <div className="panel access-panel">Checking the {expectedNetworkName} escrow deployment…</div>;
   }
 
   if (deploymentStatus !== 'ready') {

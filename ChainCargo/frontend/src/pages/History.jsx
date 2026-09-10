@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { ethers } from 'ethers';
 import { Link, useLocation } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { friendlyContractError, useContract } from '../context/ContractContext';
@@ -14,26 +13,7 @@ import {
   reconstructAgreementHistory,
   selectHistoryStartBlock,
 } from '../utils/historyEvents';
-
-const eventDetails = {
-  AgreementCreated: (args) => `${ethers.formatEther(args.amount)} ETH deposited into escrow`,
-  AgreementAccepted: () => 'Carrier accepted the agreement and activated the milestone workflow',
-  AgreementRejected: (args) => `Carrier rejected the agreement; ${ethers.formatEther(args.refundAmount)} ETH returned to the Shipper. Reason: ${args.reason}`,
-  UnacceptedAgreementCancelled: (args) => `Carrier response period expired; ${ethers.formatEther(args.refundAmount)} ETH returned to the Shipper`,
-  MilestoneProofSubmitted: (args) => `Evidence submitted for milestone ${Number(args.milestoneIndex) + 1}`,
-  MilestoneConfirmed: (args) => `${ethers.formatEther(args.paymentAmount)} ETH released after Shipper confirmation for milestone ${Number(args.milestoneIndex) + 1}`,
-  CarrierReputationAwarded: (args) => `${args.points.toString()} reputation points awarded to the Carrier (${args.totalPoints.toString()} total)`,
-  CarrierReputationDeducted: (args) => `${args.points.toString()} reputation points deducted for a missed Carrier deadline on milestone ${Number(args.milestoneIndex) + 1} (${args.totalPoints.toString()} total)`,
-  EvidenceRevisionRequested: (args) => `Shipper requested replacement evidence for milestone ${Number(args.milestoneIndex) + 1}; resubmission is due ${new Date(Number(args.resubmissionDueAt) * 1000).toLocaleString()}`,
-  AgreementCompleted: () => 'All milestones paid and the agreement completed',
-  Refunded: (args) => `${ethers.formatEther(args.amount)} ETH returned to the shipper`,
-  DisputeOpened: (args) => `Dispute opened: ${args.reason}`,
-  DisputeResponseSubmitted: (args) => `Other party response submitted: ${args.responseDetails}`,
-  DisputeResolved: (args) => `Resolved: ${ethers.formatEther(args.shipperAmount)} ETH to shipper and ${ethers.formatEther(args.carrierAmount)} ETH to carrier. Arbitrator reason: ${args.resolutionReason}`,
-  DisputeFollowUpRequested: (args) => `Arbitrator requested follow-up from ${args.requestedFrom}: ${args.question}`,
-  DisputedAgreementCancelled: (args) => `Arbitrator response period expired; ${ethers.formatEther(args.refundAmount)} ETH returned to the Shipper`,
-  DisputeContinued: (args) => `Arbitrator ${args.evidenceApproved ? 'approved the evidence' : 'requested replacement evidence'} for milestone ${Number(args.milestoneIndex) + 1}; reason: ${args.resolutionReason}; deadlines restored by ${Number(args.pausedSeconds)} seconds`,
-};
+import { historyEventDetails } from '../utils/historyEventDetails';
 
 function History() {
   const location = useLocation();
@@ -125,7 +105,7 @@ function History() {
             deployment,
             latestBlock,
           });
-          const eventTopics = Object.keys(eventDetails).map(
+          const eventTopics = Object.keys(historyEventDetails).map(
             (name) => contract.interface.getEvent(name).topicHash,
           );
           const logs = await loadContractLogsInChunks({
@@ -148,7 +128,7 @@ function History() {
           normalized = logs
             .map((log) => {
               const parsed = decodeEscrowEvent(contract.interface, log);
-              if (!parsed || parsed.args?.agreementId === undefined || !eventDetails[parsed.name]) {
+              if (!parsed || parsed.args?.agreementId === undefined || !historyEventDetails[parsed.name]) {
                 return null;
               }
               if (!agreementIds.has(parsed.args.agreementId.toString())) return null;
@@ -156,7 +136,7 @@ function History() {
                 key: `${log.transactionHash}-${log.index ?? log.logIndex ?? parsed.name}`,
                 agreementId: Number(parsed.args.agreementId),
                 name: parsed.name,
-                detail: eventDetails[parsed.name](parsed.args),
+                detail: historyEventDetails[parsed.name](parsed.args),
                 transactionHash: log.transactionHash,
                 timestamp: Number(blocks.get(log.blockNumber)?.timestamp || 0),
               };

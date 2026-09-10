@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import sepoliaDeployment from '../contracts/deployment.json';
 import localDeployment from '../contracts/deployment.local.json';
 import { ESCROW_ABI } from '../contracts/abi';
+import { REQUIRED_CONTRACT_VERSION } from '../contracts/version';
 import {
   HARDHAT_LOCAL_NETWORK,
   SEPOLIA_NETWORK,
@@ -17,7 +18,6 @@ export { friendlyContractError } from '../utils/contractErrors';
 
 const ContractContext = createContext(null);
 const DEFAULT_CHAIN_ID = SEPOLIA_NETWORK.chainId;
-const REQUIRED_CONTRACT_VERSION = 14;
 
 export function ContractProvider({ children }) {
   const { account, chainId, isConnected } = useWallet();

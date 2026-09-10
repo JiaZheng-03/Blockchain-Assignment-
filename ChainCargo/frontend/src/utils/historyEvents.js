@@ -112,7 +112,7 @@ export function reconstructAgreementHistory(agreementId, agreement, milestones) 
         key: `state-confirmed-${id}-${index}`,
         agreementId: id,
         name: 'MilestoneConfirmed',
-        detail: `${ethers.formatEther(milestone.payout)} ETH released after Shipper confirmation; Carrier reputation awarded for milestone ${index + 1}`,
+        detail: `${ethers.formatEther(milestone.payout)} ETH released after milestone confirmation; Carrier reputation awarded for milestone ${index + 1}`,
         transactionHash: null,
         timestamp: approvedAt,
       });

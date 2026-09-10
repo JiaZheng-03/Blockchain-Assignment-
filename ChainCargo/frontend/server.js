@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESCROW_ABI } from './src/contracts/abi.js';
+import { REQUIRED_CONTRACT_VERSION } from './src/contracts/version.js';
 import { addressesEqual } from './src/utils/address.js';
 import {
   EVIDENCE_MIME_TYPES,
@@ -128,10 +129,10 @@ function ensureEvidenceBucket() {
   return bucketReadyPromise;
 }
 
-async function contractSupportsSupabaseEvidence() {
-  if (!escrow) return false;
-  const version = await escrow.CONTRACT_VERSION();
-  return Number(version) >= 2;
+async function contractSupportsSupabaseEvidence(contract = escrow) {
+  if (!contract) return false;
+  const version = await contract.CONTRACT_VERSION();
+  return Number(version) >= REQUIRED_CONTRACT_VERSION;
 }
 
 function buildEvidenceObjectPath({ agreementId, mimeType, milestoneIndex, nonce }) {
@@ -178,19 +179,33 @@ app.get('/api/storage/config', async (_request, response) => {
   });
 });
 
-app.post('/api/storage/upload-url', async (request, response) => {
-  if (!supabase) {
+export function createStorageUploadHandler(dependencies = {}) {
+  const storage = dependencies.supabase ?? supabase;
+  const contract = dependencies.escrow ?? escrow;
+  const chainProvider = dependencies.provider ?? provider;
+  const configuredContractAddress = dependencies.contractAddress ?? contractAddress;
+  const configuredChainId = dependencies.chainId ?? chainId;
+  const projectRef = dependencies.supabaseProjectRef ?? supabaseProjectRef;
+  const bucket = dependencies.evidenceBucket ?? evidenceBucket;
+  const ensureBucket = dependencies.ensureEvidenceBucket ?? ensureEvidenceBucket;
+  const supportsEvidence = dependencies.contractSupportsSupabaseEvidence
+    ?? (() => contractSupportsSupabaseEvidence(contract));
+  const buildObjectPath = dependencies.buildEvidenceObjectPath
+    ?? ((values) => buildEvidenceObjectPath(values));
+
+  return async (request, response) => {
+  if (!storage) {
     return sendError(
       response,
       503,
       'Supabase is not configured. Add SUPABASE_URL and SUPABASE_SECRET_KEY to .env.',
     );
   }
-  if (!escrow) {
-    return sendError(response, 503, `No escrow contract is configured for chain ${chainId}.`);
+  if (!contract) {
+    return sendError(response, 503, `No escrow contract is configured for chain ${configuredChainId}.`);
   }
   try {
-    if (!await contractSupportsSupabaseEvidence()) {
+    if (!await supportsEvidence()) {
       return sendError(response, 409, 'Redeploy LogisticsEscrow before uploading Supabase evidence.');
     }
   } catch (error) {
@@ -219,7 +234,7 @@ app.post('/api/storage/upload-url', async (request, response) => {
   } catch (error) {
     return sendError(response, 422, error.message);
   }
-  if (!ethers.isAddress(account) || !addressesEqual(requestedContract, contractAddress)) {
+  if (!ethers.isAddress(account) || !addressesEqual(requestedContract, configuredContractAddress)) {
     return sendError(response, 400, 'The upload account or contract address is invalid.');
   }
   if (!/^\d+$/.test(String(agreementId)) || !Number.isSafeInteger(milestoneIndex) || milestoneIndex < 0) {
@@ -271,12 +286,12 @@ app.post('/api/storage/upload-url', async (request, response) => {
     let dispute = null;
     let latestBlock;
     try {
-      agreement = await escrow.getAgreement(agreementId);
+      agreement = await contract.getAgreement(agreementId);
       if (!addressesEqual(agreement.carrier, account)) {
         return sendError(response, 403, 'Only the assigned Carrier can upload this evidence.');
       }
       dispute = Number(agreement.status) === 3
-        ? await escrow.getDisputeRequest(agreementId)
+        ? await contract.getMilestoneDispute(agreementId, Number(agreement.nextMilestone))
         : null;
       if (!canSubmitEvidenceForWorkflow({
         agreementStatus: agreement.status,
@@ -286,12 +301,12 @@ app.post('/api/storage/upload-url', async (request, response) => {
       })) {
         return sendError(response, 409, 'This milestone is not currently accepting evidence.');
       }
-      const milestones = await escrow.getMilestones(agreementId);
+      const milestones = await contract.getMilestones(agreementId);
       currentMilestone = milestones[milestoneIndex];
       if (!currentMilestone || Number(currentMilestone.state) !== 0) {
         return sendError(response, 409, 'The selected milestone is not pending evidence.');
       }
-      latestBlock = await provider.getBlock('latest');
+      latestBlock = await chainProvider.getBlock('latest');
       if (!latestBlock) throw new Error('Latest blockchain block was unavailable.');
     } catch (error) {
       if (response.headersSent) return undefined;
@@ -315,20 +330,20 @@ app.post('/api/storage/upload-url', async (request, response) => {
     let signedUrl;
     let proofURI;
     try {
-      await ensureEvidenceBucket();
-      const objectPath = buildEvidenceObjectPath({
+      await ensureBucket();
+      const objectPath = buildObjectPath({
         agreementId,
         mimeType,
         milestoneIndex,
         nonce,
       });
       proofURI = createSupabaseProofUri({
-        bucket: evidenceBucket,
+        bucket,
         objectPath,
-        projectRef: supabaseProjectRef,
+        projectRef,
       });
-      const { data, error } = await supabase.storage
-        .from(evidenceBucket)
+      const { data, error } = await storage.storage
+        .from(bucket)
         .createSignedUploadUrl(objectPath, { upsert: false });
       if (error || !data?.signedUrl) throw error || new Error('Missing signed upload URL.');
       signedUrl = data.signedUrl;
@@ -342,7 +357,10 @@ app.post('/api/storage/upload-url', async (request, response) => {
   } finally {
     if (!signedUrlIssued) usedAuthorizations.delete(authorizationId);
   }
-});
+  };
+}
+
+app.post('/api/storage/upload-url', createStorageUploadHandler());
 
 const distDirectory = path.join(rootDirectory, 'dist');
 app.use(express.static(distDirectory));
@@ -353,7 +371,11 @@ app.use((request, response, next) => {
   return next();
 });
 
-app.listen(port, host, () => {
-  const status = supabase ? 'configured' : 'missing or invalid Supabase settings';
-  console.log(`CargoSeal API listening at http://${host}:${port} (Supabase ${status})`);
-});
+if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] || '')) {
+  app.listen(port, host, () => {
+    const status = supabase ? 'configured' : 'missing or invalid Supabase settings';
+    console.log(`CargoSeal API listening at http://${host}:${port} (Supabase ${status})`);
+  });
+}
+
+export { app };

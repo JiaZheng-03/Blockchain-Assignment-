@@ -11,6 +11,7 @@ import {
 
 import { ethers } from 'ethers';
 import { ESCROW_ABI } from '../src/contracts/abi.js';
+import { REQUIRED_CONTRACT_VERSION } from '../src/contracts/version.js';
 import { friendlyContractError } from '../src/utils/contractErrors.js';
 import {
   decodeEscrowEvent,
@@ -20,6 +21,7 @@ import {
   reconstructAgreementHistory,
   selectHistoryStartBlock,
 } from '../src/utils/historyEvents.js';
+import { historyEventDetails } from '../src/utils/historyEventDetails.js';
 import {
   SEPOLIA_NETWORK,
   switchWalletNetwork,
@@ -633,6 +635,10 @@ test('extracts AgreementCreated only from the confirmed escrow contract logs', (
   );
 });
 
+test('requires the final contract workflow version', () => {
+  assert.equal(REQUIRED_CONTRACT_VERSION, 20);
+});
+
 test('reconstructs viewable history when an RPC rejects event-log queries', () => {
   const entries = reconstructAgreementHistory(
     7n,
@@ -667,6 +673,34 @@ test('reconstructs viewable history when an RPC rejects event-log queries', () =
     ],
   );
   assert.ok(entries.every((entry) => entry.transactionHash === null));
+  assert.match(entries[2].detail, /milestone confirmation/);
+  assert.doesNotMatch(entries[2].detail, /Shipper confirmation/);
+});
+
+test('covers extension and arbitration events and attributes confirmation and revision actors', () => {
+  for (const eventName of [
+    'DeadlineExtensionRequested',
+    'DeadlineExtensionApproved',
+    'DeadlineExtensionRejected',
+    'ExtensionCompensationPaid',
+    'ArbitrationRequested',
+  ]) {
+    assert.equal(typeof historyEventDetails[eventName], 'function');
+  }
+  const confirmation = historyEventDetails.MilestoneConfirmed({
+    paymentAmount: ethers.parseEther('1'),
+    confirmer: '0xArbitrator',
+    milestoneIndex: 0,
+  });
+  const revision = historyEventDetails.EvidenceRevisionRequested({
+    requester: '0xArbitrator',
+    milestoneIndex: 0,
+    resubmissionDueAt: 1_800_000_000,
+  });
+  assert.match(confirmation, /confirmation by 0xArbitrator/);
+  assert.match(revision, /requested by 0xArbitrator/);
+  assert.doesNotMatch(confirmation, /Shipper confirmation/);
+  assert.doesNotMatch(revision, /^Shipper requested/);
 });
 
 test('groups history into one newest-first summary per agreement', () => {

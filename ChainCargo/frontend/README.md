@@ -87,7 +87,7 @@ This project is intended for university coursework and Sepolia demonstrations. I
 - Confirming a milestone awards 10 Carrier reputation points.
 - A missed-evidence refund deducts 10 points once, with a minimum score of zero.
 - Either participant may open a dispute only after the Carrier submits evidence for the current milestone.
-- Each milestone allows only one dispute request. Its request, responses, and resolution remain available in that milestone's permanent on-chain record.
+- A milestone may be disputed again after an Arbitrator requests replacement evidence, so a later review timeout cannot lock the agreement. Every dispute attempt remains permanently visible in transaction history.
 - The other participant has up to 24 hours to respond. An Arbitrator may act sooner if that response is submitted, otherwise the actions unlock after the response period.
 - A dispute pauses affected deadlines; later milestone evidence may still be submitted.
 - An Arbitrator cannot resolve a case while a requested follow-up response is still pending.

@@ -88,7 +88,7 @@ test('refreshed Active replacement workflow enables upload and sends one Carrier
   const milestone = { state: 0, proofHash: ethers.ZeroHash, proofURI: '', submittedAt: 0 };
   assert.equal(Action({ ...props, status: agreement.status, milestone }), null);
   assert.equal(canSubmitEvidenceForWorkflow({ agreementStatus: agreement.status, milestoneIndex: 0 }), true);
-  const args = { agreementId: 7, shipper: '0xarbitrator', evidenceApproved: false, resolutionReason: props.reason.trim() };
+  const args = { agreementId: 7, requester: '0xarbitrator', evidenceApproved: false, resolutionReason: props.reason.trim() };
   assert.equal(eventNotification({ name: 'EvidenceRevisionRequested', args }, agreement, '0xcarrier', '0xarbitrator'), null);
   const item = eventNotification({ name: 'DisputeContinued', args }, agreement, '0xcarrier', '0xarbitrator');
   assert.match(item.message, /requested replacement evidence/);
@@ -98,6 +98,14 @@ test('refreshed Active replacement workflow enables upload and sends one Carrier
   const source = await readFile(new URL('../src/pages/AgreementDetail.jsx', import.meta.url), 'utf8');
   assert.ok(source.includes('contract.getMilestoneDispute(id, milestoneIndex)'));
   assert.ok(source.includes('setMilestoneDisputes(disputeRecords)'));
-  assert.ok(source.includes('This milestone has used its one dispute request.'));
+  assert.ok(source.includes('!currentMilestoneDispute?.active'));
   assert.ok(source.includes('agreement.status !== 3 && disputeInfo?.resolutionReason'));
+});
+
+test('UI closes the initial response at 24 hours but validates all text by UTF-8 bytes', async () => {
+  const source = await readFile(new URL('../src/pages/AgreementDetail.jsx', import.meta.url), 'utf8');
+  assert.ok(source.includes('nowSeconds >= participantResponseDeadline'));
+  assert.ok(source.includes('canRespondToDispute && !participantResponseExpired'));
+  assert.ok(source.includes('!disputeReasonValid'));
+  assert.ok(source.includes('!extensionReasonValid'));
 });

@@ -97,6 +97,8 @@ function AgreementDetail() {
   const [rejectionReason, setRejectionReason] = useState('');
   const rejectionReasonValid = rejectionReason.trim().length > 0
     && new TextEncoder().encode(rejectionReason.trim()).length <= 1000;
+  const disputeReasonValid = isValidDisputeText(disputeReason);
+  const extensionReasonValid = isValidDisputeText(extensionReason);
   const [replacementConfirmationOpen, setReplacementConfirmationOpen] = useState(false);
   const [disputeConfirmationOpen, setDisputeConfirmationOpen] = useState(false);
   const [arbitratorTimeoutCancellationOpen, setArbitratorTimeoutCancellationOpen] = useState(false);
@@ -342,7 +344,7 @@ function AgreementDetail() {
   };
 
   const confirmDisputeRequest = () => {
-    if (!disputeReason.trim()) return;
+    if (!disputeReasonValid) return;
     const reason = disputeReason.trim();
     setDisputeConfirmationOpen(false);
     transact('dispute', (contract) => contract.requestDispute(id, reason));
@@ -529,7 +531,7 @@ function AgreementDetail() {
   const canRequestDispute = agreement.status === 0
     && (isShipper || isCarrier)
     && currentMilestone?.state === 1
-    && !currentMilestoneDispute?.openedAt;
+    && !currentMilestoneDispute?.active;
   const canRespondToDispute = agreement.status === 3
     && Boolean(disputeInfo)
     && (isShipper || isCarrier)
@@ -555,6 +557,10 @@ function AgreementDetail() {
     && disputeInfo?.type === 'participant-dispute'
     && disputeInfo.respondedBy === ethers.ZeroAddress
     && nowSeconds < participantResponseDeadline;
+  const participantResponseExpired = agreement.status === 3
+    && disputeInfo?.type === 'participant-dispute'
+    && disputeInfo.respondedBy === ethers.ZeroAddress
+    && nowSeconds >= participantResponseDeadline;
   const arbitratorActionReady = !participantResponsePending && !followUpPending;
   const canSubmitFollowUp = agreement.status === 3
     && followUpPending
@@ -727,7 +733,7 @@ function AgreementDetail() {
                 </div>
               </>
             )}
-            {canRespondToDispute && !arbitratorResponseExpired && (
+            {canRespondToDispute && !participantResponseExpired && !arbitratorResponseExpired && (
               <div className="dispute-response-form">
                 <label htmlFor="dispute-response-details">Your response for the Arbitrator</label>
                 <textarea
@@ -905,7 +911,7 @@ function AgreementDetail() {
             <div className="dispute-request-actions">
               <button
                 className="btn btn-danger"
-                disabled={Boolean(busyAction) || !disputeReason.trim()}
+                disabled={Boolean(busyAction) || !disputeReasonValid}
                 onClick={() => setDisputeConfirmationOpen(true)}
                 type="button"
               >
@@ -1236,7 +1242,7 @@ function AgreementDetail() {
                             <p>{milestoneDispute.resolutionReason}</p>
                           </div>
                         )}
-                        <small>This milestone has used its one dispute request.</small>
+                        <small>This is the latest dispute for this milestone. Earlier attempts remain in transaction history.</small>
                       </div>
                     </details>
                   )}
@@ -1275,7 +1281,7 @@ function AgreementDetail() {
                         Extension reason
                         <textarea value={extensionReason} onChange={(event) => setExtensionReason(event.target.value)} maxLength="1000" placeholder="Explain why another 24 hours are needed" />
                       </label>
-                      <button className="btn btn-secondary" disabled={Boolean(busyAction) || !extensionReason.trim()} onClick={() => transact('request-extension', (contract) => contract.requestDeadlineExtension(id, milestone.index, extensionReason.trim()))} type="button">
+                      <button className="btn btn-secondary" disabled={Boolean(busyAction) || !extensionReasonValid} onClick={() => transact('request-extension', (contract) => contract.requestDeadlineExtension(id, milestone.index, extensionReason.trim()))} type="button">
                         {busyAction === 'request-extension' ? 'Requesting…' : 'Request 24-hour extension'}
                       </button>
                     </div>
@@ -1501,10 +1507,10 @@ function AgreementDetail() {
           >
             <h2 id="dispute-confirmation-title">Request Arbitrator action?</h2>
             <div className="toast-message" id="dispute-confirmation-message">
-              <strong>Each milestone can request a dispute only once.</strong>
+              <strong>This opens a new on-chain dispute attempt.</strong>
               <p>
-                This will use the dispute request for Milestone {currentMilestone?.index + 1}: {currentMilestone?.name} and pause its workflow.
-                The request, responses, and final resolution will remain available inside this milestone for later review.
+                This will open a dispute for Milestone {currentMilestone?.index + 1}: {currentMilestone?.name} and pause its workflow.
+                The request, responses, and final resolution will remain available in transaction history for later review.
               </p>
               <p>The other party will have up to 24 hours to respond before the Arbitrator can act.</p>
             </div>

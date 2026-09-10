@@ -1,0 +1,26 @@
+import { ethers } from 'ethers';
+
+export const historyEventDetails = {
+  AgreementCreated: (args) => `${ethers.formatEther(args.amount)} ETH deposited into escrow`,
+  AgreementAccepted: () => 'Carrier accepted the agreement and activated the milestone workflow',
+  AgreementRejected: (args) => `Carrier rejected the agreement; ${ethers.formatEther(args.refundAmount)} ETH returned to the Shipper. Reason: ${args.reason}`,
+  UnacceptedAgreementCancelled: (args) => `Carrier response period expired; ${ethers.formatEther(args.refundAmount)} ETH returned to the Shipper`,
+  MilestoneProofSubmitted: (args) => `Evidence submitted for milestone ${Number(args.milestoneIndex) + 1}`,
+  MilestoneConfirmed: (args) => `${ethers.formatEther(args.paymentAmount)} ETH released after confirmation by ${args.confirmer} for milestone ${Number(args.milestoneIndex) + 1}`,
+  CarrierReputationAwarded: (args) => `${args.points.toString()} reputation points awarded to the Carrier (${args.totalPoints.toString()} total)`,
+  CarrierReputationDeducted: (args) => `${args.points.toString()} reputation points deducted for a missed Carrier deadline on milestone ${Number(args.milestoneIndex) + 1} (${args.totalPoints.toString()} total)`,
+  EvidenceRevisionRequested: (args) => `Replacement evidence requested by ${args.requester} for milestone ${Number(args.milestoneIndex) + 1}; resubmission is due ${new Date(Number(args.resubmissionDueAt) * 1000).toLocaleString()}`,
+  DeadlineExtensionRequested: (args) => `Carrier requested an extension for milestone ${Number(args.milestoneIndex) + 1} until ${new Date(Number(args.proposedDueAt) * 1000).toLocaleString()}. Reason: ${args.reason}`,
+  DeadlineExtensionApproved: (args) => `Deadline extension approved for milestone ${Number(args.milestoneIndex) + 1}; new deadline ${new Date(Number(args.newDueAt) * 1000).toLocaleString()} and ${ethers.formatEther(args.compensation)} ETH compensation`,
+  DeadlineExtensionRejected: (args) => `Deadline extension rejected for milestone ${Number(args.milestoneIndex) + 1}`,
+  ExtensionCompensationPaid: (args) => `${ethers.formatEther(args.amount)} ETH extension compensation paid to the Shipper for milestone ${Number(args.milestoneIndex) + 1}`,
+  ArbitrationRequested: (args) => `Carrier ${args.carrier} requested Arbitrator review after the milestone ${Number(args.milestoneIndex) + 1} review period expired`,
+  AgreementCompleted: () => 'All milestones paid and the agreement completed',
+  Refunded: (args) => `${ethers.formatEther(args.amount)} ETH returned to the shipper`,
+  DisputeOpened: (args) => `Dispute opened for milestone ${Number(args.milestoneIndex) + 1} by ${args.openedBy}: ${args.reason}`,
+  DisputeResponseSubmitted: (args) => `Other party response submitted: ${args.responseDetails}`,
+  DisputeResolved: (args) => `Resolved: ${ethers.formatEther(args.shipperAmount)} ETH to shipper and ${ethers.formatEther(args.carrierAmount)} ETH to carrier. Arbitrator reason: ${args.resolutionReason}`,
+  DisputeFollowUpRequested: (args) => `Arbitrator requested follow-up from ${args.requestedFrom}: ${args.question}`,
+  DisputedAgreementCancelled: (args) => `Arbitrator response period expired; ${ethers.formatEther(args.refundAmount)} ETH returned to the Shipper`,
+  DisputeContinued: (args) => `Arbitrator ${args.evidenceApproved ? 'approved the evidence' : 'requested replacement evidence'} for milestone ${Number(args.milestoneIndex) + 1}; reason: ${args.resolutionReason}; deadlines restored by ${Number(args.pausedSeconds)} seconds`,
+};
