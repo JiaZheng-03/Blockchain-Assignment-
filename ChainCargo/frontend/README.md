@@ -86,8 +86,11 @@ This project is intended for university coursework and Sepolia demonstrations. I
 - An approved extension affects only that milestone and allocates 5% of its payout to the Shipper.
 - Confirming a milestone awards 10 Carrier reputation points.
 - A missed-evidence refund deducts 10 points once, with a minimum score of zero.
-- Either participant may open a dispute while the workflow permits it.
+- Either participant may open a dispute only after the Carrier submits evidence for the current milestone.
+- Each milestone allows only one dispute request. Its request, responses, and resolution remain available in that milestone's permanent on-chain record.
+- The other participant has up to 24 hours to respond. An Arbitrator may act sooner if that response is submitted, otherwise the actions unlock after the response period.
 - A dispute pauses affected deadlines; later milestone evidence may still be submitted.
+- An Arbitrator cannot resolve a case while a requested follow-up response is still pending.
 - Additional Arbitrator questions do not restart the 48-hour Arbitrator deadline.
 - After 48 hours without an Arbitrator decision, the Arbitrator is locked out. Either participant may submit a cancellation transaction that refunds all remaining escrow to the Shipper.
 - A smart contract cannot wake itself up at a future time. Refunds and timeout cancellations require a MetaMask transaction.
@@ -347,4 +350,3 @@ Check MetaMask network, RPC access, and the deployed address. Do not register ag
 ## License
 
 This project is provided for academic use. Add an explicit license before external distribution.
-
