@@ -10,7 +10,6 @@ import { addressesEqual } from './src/utils/address.js';
 import {
   EVIDENCE_MIME_TYPES,
   MAX_EVIDENCE_FILE_SIZE,
-  SUPABASE_EVIDENCE_SCHEME,
   canSubmitEvidenceForWorkflow,
   createSupabaseProofUri,
   createUploadAuthorizationMessage,
@@ -131,11 +130,8 @@ function ensureEvidenceBucket() {
 
 async function contractSupportsSupabaseEvidence() {
   if (!escrow) return false;
-  const [scheme, version] = await Promise.all([
-    escrow.EVIDENCE_URI_SCHEME(),
-    escrow.CONTRACT_VERSION(),
-  ]);
-  return scheme === SUPABASE_EVIDENCE_SCHEME && Number(version) >= 2;
+  const version = await escrow.CONTRACT_VERSION();
+  return Number(version) >= 2;
 }
 
 function buildEvidenceObjectPath({ agreementId, mimeType, milestoneIndex, nonce }) {
