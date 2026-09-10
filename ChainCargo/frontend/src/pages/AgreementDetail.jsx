@@ -22,12 +22,11 @@ import {
   isRefundButtonAvailable,
 } from '../utils/deadlineAlerts';
 import { showActionResult } from '../utils/actionResult';
-import { getDisputePayout } from '../utils/disputeResolution';
+import { getDisputePayout, isValidDisputeText } from '../utils/disputeResolution';
+import ReplacementEvidenceAction from '../components/ReplacementEvidenceAction';
 
 const shortAddress = (address) => `${address.slice(0, 6)}…${address.slice(-4)}`;
 const formatDate = (timestamp) => new Date(timestamp * 1000).toLocaleString();
-const isValidDisputeText = (value) => value.trim().length > 0
-  && new TextEncoder().encode(value.trim()).length <= 1000;
 
 function ParticipantIdentity({ address, copied, label, name, onCopy }) {
   return (
@@ -82,6 +81,7 @@ function AgreementDetail() {
   const [rejectionReason, setRejectionReason] = useState('');
   const rejectionReasonValid = rejectionReason.trim().length > 0
     && new TextEncoder().encode(rejectionReason.trim()).length <= 1000;
+  const [replacementConfirmationOpen, setReplacementConfirmationOpen] = useState(false);
   const [disputeConfirmationOpen, setDisputeConfirmationOpen] = useState(false);
   const [arbitratorTimeoutCancellationOpen, setArbitratorTimeoutCancellationOpen] = useState(false);
   const [error, setError] = useState('');
@@ -163,7 +163,7 @@ function AgreementDetail() {
       const identityEntries = await Promise.all(identityAddresses.map(async (identityAddress) => {
         try {
           const profile = await contract.getProfile(identityAddress);
-          return [identityAddress, { name: profile.name || '' }];
+          return [identityAddress, { name: profile.name || '', role: Number(profile.role) }];
         } catch {
           return [identityAddress, { name: '' }];
         }
@@ -171,7 +171,7 @@ function AgreementDetail() {
       setParticipantProfiles(Object.fromEntries(identityEntries));
       setDisputeInfo(null);
       setDisputeLookupError('');
-      if ([3, 4].includes(Number(rawAgreement.status))) {
+      if ([0, 1, 3, 4].includes(Number(rawAgreement.status))) {
         try {
           const dispute = await contract.getDisputeRequest(id);
           if (Number(dispute.openedAt) > 0) {
@@ -269,6 +269,7 @@ function AgreementDetail() {
 
   useEffect(() => {
     setEvidenceFiles({});
+    setReplacementConfirmationOpen(false);
     evidenceFileInputRefs.current.forEach((input) => {
       if (input) input.value = '';
     });
@@ -772,7 +773,7 @@ function AgreementDetail() {
             )}
           </div>
         )}
-        {agreement.status === 4 && disputeInfo?.resolutionReason && (
+        {agreement.status !== 3 && disputeInfo?.resolutionReason && (
           <div className="dispute-status-banner" role="status">
             <span className="dispute-status-mark" aria-hidden="true">!</span>
             <div>
@@ -975,17 +976,17 @@ function AgreementDetail() {
             )}
             {currentMilestone?.proofHash !== ethers.ZeroHash && (
               <>
-                <h4>Accept the current milestone</h4>
-                <p>Pay this milestone to the Carrier, end the dispute, and continue the agreement. Paused time is added back to all remaining deadlines.</p>
+                <h4>Resolve the current milestone evidence</h4>
+                <p>Approve the evidence to pay this milestone to the Carrier, or request replacement evidence without moving escrow. Either decision ends the dispute and continues the agreement. Paused time is added back to all remaining deadlines.</p>
                 <label htmlFor="arbitrator-resolution-reason">Reason for this decision</label>
                 <textarea
                   id="arbitrator-resolution-reason"
                   maxLength="1000"
-                  placeholder="Explain why this evidence is approved"
+                  placeholder="Explain why this evidence is approved or needs replacement"
                   value={arbitratorReason}
                   onChange={(event) => setArbitratorReason(event.target.value)}
                 />
-                <small>This reason will be recorded on-chain and shown to the Shipper and Carrier.</small>
+                <small>This reason is required, must be no more than 1,000 UTF-8 bytes, and will be recorded on-chain and shown to the Shipper and Carrier.</small>
                 <button
                   className="btn btn-primary"
                   disabled={arbitratorResponseExpired || Boolean(busyAction) || !isValidDisputeText(arbitratorReason)}
@@ -997,6 +998,19 @@ function AgreementDetail() {
                 >
                   Approve milestone & continue
                 </button>
+                <ReplacementEvidenceAction
+                  id={id}
+                  isArbitrator={Boolean(account) && isArbitrator && participantProfiles[normalizedAccount]?.role === 3}
+                  status={agreement.status}
+                  responseDeadline={arbitratorResponseDeadline}
+                  nowSeconds={nowSeconds}
+                  milestone={milestones[disputeInfo?.milestoneIndex]}
+                  busyAction={busyAction}
+                  reason={arbitratorReason}
+                  confirmationOpen={replacementConfirmationOpen}
+                  setConfirmationOpen={setReplacementConfirmationOpen}
+                  transact={transact}
+                />
               </>
             )}
             {!arbitratorResponseExpired && disputeInfo && (
@@ -1225,7 +1239,7 @@ function AgreementDetail() {
                       <strong>Review and verify evidence before confirmation</strong>
                       <div className={`notice ${reviewExpired ? 'warning' : ''}`}>
                         {reviewExpired
-                          ? 'The 1-hour review period has ended. The Carrier may now request Arbitrator review.'
+                          ? 'The 24-hour review period has ended. The Carrier may now request Arbitrator review.'
                           : `${formatDeadlineDuration(reviewSecondsRemaining)} remain in the Shipper review period.`}
                       </div>
                       {!evidenceVerified && (

@@ -47,7 +47,8 @@ export function eventNotification(event, agreement, account, arbitrator) {
     AgreementAccepted: [shipper, 'The Carrier accepted this agreement.'],
     AgreementRejected: [shipper, `The Carrier rejected this agreement. Escrow refunded. Reason: ${args.reason || 'Not provided'}`],
     MilestoneProofSubmitted: [shipper, 'Evidence submitted for your review.'],
-    EvidenceRevisionRequested: [carrier, 'Replacement evidence requested.'],
+    // Arbitrator revisions also emit DisputeContinued, which includes the reason.
+    EvidenceRevisionRequested: [carrier && !(args.shipper && lower(args.shipper) === lower(arbitrator)), 'Replacement evidence requested.'],
     MilestoneConfirmed: [carrier, 'Milestone confirmed and payment released.'],
     DeadlineExtensionRequested: [shipper, 'The Carrier requested a deadline extension.'],
     DeadlineExtensionApproved: [carrier, 'Deadline extension approved.'],

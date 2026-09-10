@@ -8,3 +8,5 @@ export function getDisputePayout(remainingAmount, outcome) {
   }
   throw new Error('Unknown dispute payout outcome.');
 }
+export const isValidDisputeText = (value) => value.trim().length > 0
+  && new TextEncoder().encode(value.trim()).length <= 1000;

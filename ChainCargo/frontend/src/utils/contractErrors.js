@@ -34,7 +34,7 @@ const errorMessages = {
   NoActiveDispute: 'This agreement does not have an active dispute to resolve.',
   DisputeResponseAlreadySubmitted: 'The other party has already submitted a response for this dispute.',
   ArbitratorResponsePeriodActive: 'The Arbitrator still has time to respond to this dispute.',
-  ArbitratorResponsePeriodClosed: 'The 24-hour Arbitrator response period has expired. A participant may now cancel the agreement and refund the remaining escrow to the Shipper.',
+  ArbitratorResponsePeriodClosed: 'The 48-hour Arbitrator response period has expired. A participant may now cancel the agreement and refund the remaining escrow to the Shipper.',
   FollowUpResponsePending: 'Wait for the requested participant to submit the current follow-up response.',
 };
 
